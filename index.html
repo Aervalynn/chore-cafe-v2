@@ -1,28 +1,291 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Chore Cafe</title>
-  <style>
-    body {
-      font-family: system-ui, sans-serif;
-      background: #FEFAE0;
-      color: #5C4033;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      min-height: 100vh;
-      margin: 0;
-      text-align: center;
-    }
-    h1 { font-size: 2rem; margin-bottom: 0.5rem; }
-    p { color: #8B7355; }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#D4A373">
+<title>Chore Cafe</title>
+<style>
+  :root {
+    --cream: #FEFAE0;
+    --card: #FFFEF7;
+    --tan: #D4A373;
+    --tan-dark: #B08554;
+    --cocoa: #5C4033;
+    --muted: #8B7355;
+    --line: #E8DCC4;
+    --error: #A33F32;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--cream);
+    color: var(--cocoa);
+    font-family: ui-rounded, "Segoe UI", system-ui, sans-serif;
+    font-size: 16px;
+    line-height: 1.5;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 32px 28px;
+    width: 100%;
+    max-width: 380px;
+  }
+
+  .sign {
+    text-align: center;
+    margin-bottom: 28px;
+  }
+
+  .sign h1 {
+    font-size: 28px;
+    font-weight: 600;
+    margin: 0 0 4px;
+    letter-spacing: -0.01em;
+  }
+
+  .sign p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 14px;
+  }
+
+  .rule {
+    border: none;
+    border-top: 1px dashed var(--line);
+    margin: 24px 0;
+  }
+
+  label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+
+  input {
+    width: 100%;
+    padding: 12px 14px;
+    font-size: 16px;
+    font-family: inherit;
+    color: var(--cocoa);
+    background: var(--cream);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    margin-bottom: 16px;
+  }
+
+  input:focus {
+    outline: 2px solid var(--tan);
+    outline-offset: 1px;
+    border-color: var(--tan);
+  }
+
+  button {
+    width: 100%;
+    padding: 13px;
+    font-size: 16px;
+    font-weight: 600;
+    font-family: inherit;
+    color: #fff;
+    background: var(--tan);
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+  }
+
+  button:hover:not(:disabled) { background: var(--tan-dark); }
+  button:focus-visible { outline: 2px solid var(--cocoa); outline-offset: 2px; }
+  button:disabled { opacity: 0.6; cursor: default; }
+
+  button.quiet {
+    background: none;
+    color: var(--muted);
+    font-weight: 500;
+    font-size: 14px;
+    padding: 8px;
+  }
+
+  button.quiet:hover:not(:disabled) {
+    background: var(--cream);
+    color: var(--cocoa);
+  }
+
+  .error {
+    color: var(--error);
+    font-size: 14px;
+    margin: 0 0 16px;
+  }
+
+  .hidden { display: none; }
+
+  .greeting {
+    font-size: 20px;
+    font-weight: 600;
+    margin: 0 0 4px;
+  }
+
+  .balance {
+    font-size: 15px;
+    color: var(--muted);
+    margin: 0;
+  }
+
+  .note {
+    font-size: 13px;
+    color: var(--muted);
+    text-align: center;
+    margin: 0;
+  }
+</style>
 </head>
 <body>
-  <h1>Chore Cafe</h1>
-  <p>Under construction.</p>
+
+<div class="card">
+
+  <div class="sign">
+    <h1>Chore Cafe</h1>
+    <p id="tagline">Now serving</p>
+  </div>
+
+  <div id="loading" class="note">Opening up&hellip;</div>
+
+  <form id="login" class="hidden" autocomplete="on">
+    <p id="error" class="error hidden"></p>
+
+    <label for="email">Email</label>
+    <input type="email" id="email" name="email" autocomplete="username" required>
+
+    <label for="password">Password</label>
+    <input type="password" id="password" name="password" autocomplete="current-password" required>
+
+    <button type="submit" id="signin-btn">Sign in</button>
+  </form>
+
+  <div id="app" class="hidden">
+    <p class="greeting" id="greeting"></p>
+    <p class="balance" id="balance"></p>
+    <hr class="rule">
+    <p class="note">The quest board goes here next.</p>
+    <hr class="rule">
+    <button type="button" class="quiet" id="signout-btn">Sign out</button>
+  </div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+  // ---- PASTE YOUR TWO VALUES BETWEEN THE QUOTES BELOW ----
+  const SUPABASE_URL = "https://dvvcgewfmpivzikokdea.supabase.co";
+  const SUPABASE_KEY = "sb_publishable_TKIREc13KwUJMs8Owtq09w_nNFV6pVj";
+  // --------------------------------------------------------
+
+  const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  const el = {
+    loading: document.getElementById("loading"),
+    login: document.getElementById("login"),
+    app: document.getElementById("app"),
+    error: document.getElementById("error"),
+    email: document.getElementById("email"),
+    password: document.getElementById("password"),
+    signinBtn: document.getElementById("signin-btn"),
+    signoutBtn: document.getElementById("signout-btn"),
+    greeting: document.getElementById("greeting"),
+    balance: document.getElementById("balance"),
+    tagline: document.getElementById("tagline")
+  };
+
+  function show(which) {
+    el.loading.classList.add("hidden");
+    el.login.classList.toggle("hidden", which !== "login");
+    el.app.classList.toggle("hidden", which !== "app");
+  }
+
+  function showError(message) {
+    el.error.textContent = message;
+    el.error.classList.remove("hidden");
+  }
+
+  function clearError() {
+    el.error.textContent = "";
+    el.error.classList.add("hidden");
+  }
+
+  async function loadApp(user) {
+    const { data: profile } = await db
+      .from("profiles")
+      .select("display_name")
+      .eq("id", user.id)
+      .single();
+
+    const name = profile ? profile.display_name : "friend";
+    el.greeting.textContent = "Morning, " + name + ".";
+    el.tagline.textContent = "Signed in";
+
+    const { data: coins } = await db
+      .from("coin_transactions")
+      .select("amount")
+      .eq("user_id", user.id);
+
+    const total = (coins || []).reduce(function (sum, row) {
+      return sum + row.amount;
+    }, 0);
+
+    el.balance.textContent = total + " coins in the jar.";
+    show("app");
+  }
+
+  el.login.addEventListener("submit", async function (event) {
+    event.preventDefault();
+    clearError();
+    el.signinBtn.disabled = true;
+    el.signinBtn.textContent = "Signing in\u2026";
+
+    const { data, error } = await db.auth.signInWithPassword({
+      email: el.email.value.trim(),
+      password: el.password.value
+    });
+
+    el.signinBtn.disabled = false;
+    el.signinBtn.textContent = "Sign in";
+
+    if (error) {
+      showError("That email and password don't match an account.");
+      el.password.value = "";
+      return;
+    }
+
+    el.password.value = "";
+    loadApp(data.user);
+  });
+
+  el.signoutBtn.addEventListener("click", async function () {
+    await db.auth.signOut();
+    el.tagline.textContent = "Now serving";
+    show("login");
+  });
+
+  (async function start() {
+    const { data } = await db.auth.getSession();
+    if (data.session) {
+      loadApp(data.session.user);
+    } else {
+      show("login");
+    }
+  })();
+</script>
+
 </body>
 </html>
