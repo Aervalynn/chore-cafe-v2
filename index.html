@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#D4A373">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="apple-touch-icon" href="icon-180.png">
 <title>Chore Cafe</title>
 <style>
   :root {
@@ -325,6 +328,17 @@
 
   .sheet-actions { display: flex; gap: 10px; margin-top: 4px; }
   .sheet-actions button { flex: 1; padding: 13px; }
+
+  .sheet .sub-label {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    margin: 20px 0 8px;
+  }
+
+  .sheet .sub-label:first-of-type { margin-top: 4px; }
 </style>
 </head>
 <body>
@@ -386,6 +400,7 @@
   <div id="activity"></div>
 
   <div class="footer">
+    <button type="button" class="quiet" id="open-manage">Manage chores</button>
     <button type="button" class="quiet" id="signout-btn">Sign out</button>
     <p class="status" id="push-status"></p>
   </div>
@@ -484,6 +499,72 @@
       <div class="sheet-actions">
         <button type="button" class="outline" id="cancel-gift">Cancel</button>
         <button type="submit" id="gift-submit">Send it</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div id="manage-overlay" class="overlay hidden">
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="manage-title">
+    <h2 id="manage-title">Manage chores</h2>
+    <p class="lead">Edit a chore's details, or archive one that's no longer needed.</p>
+
+    <p class="sub-label">Active</p>
+    <div id="manage-active"></div>
+
+    <p class="sub-label">Archived</p>
+    <div id="manage-archived"></div>
+
+    <div class="sheet-actions">
+      <button type="button" class="outline" id="close-manage">Close</button>
+    </div>
+  </div>
+</div>
+
+<div id="edit-chore-overlay" class="overlay hidden">
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="edit-chore-title">
+    <h2 id="edit-chore-title">Edit chore</h2>
+    <p class="lead">Changes apply going forward &mdash; they won't change anything already on the board.</p>
+    <form id="edit-chore-form">
+      <p id="edit-chore-error" class="error hidden"></p>
+
+      <label for="e-name">What needs doing</label>
+      <input type="text" id="e-name" maxlength="80" required>
+
+      <label for="e-difficulty">Difficulty</label>
+      <select id="e-difficulty">
+        <option value="easy">Easy</option>
+        <option value="medium">Medium</option>
+        <option value="hard">Hard</option>
+      </select>
+
+      <label for="e-frequency">How often</label>
+      <select id="e-frequency">
+        <option value="one_time">One-time bounty</option>
+        <option value="on_demand">Whenever it needs doing</option>
+        <option value="daily">Certain days each week</option>
+        <option value="weekly">Weekly</option>
+        <option value="biweekly">Every two weeks</option>
+        <option value="monthly">Monthly</option>
+        <option value="quarterly">Every three months</option>
+      </select>
+
+      <div id="edit-days-block" class="hidden">
+        <label>Which days</label>
+        <div class="days" id="edit-days">
+          <label><input type="checkbox" value="1"><span>Mon</span></label>
+          <label><input type="checkbox" value="2"><span>Tue</span></label>
+          <label><input type="checkbox" value="3"><span>Wed</span></label>
+          <label><input type="checkbox" value="4"><span>Thu</span></label>
+          <label><input type="checkbox" value="5"><span>Fri</span></label>
+          <label><input type="checkbox" value="6"><span>Sat</span></label>
+          <label><input type="checkbox" value="0"><span>Sun</span></label>
+        </div>
+      </div>
+
+      <div class="sheet-actions">
+        <button type="button" class="outline" id="cancel-edit-chore">Cancel</button>
+        <button type="submit" id="edit-chore-submit">Save changes</button>
       </div>
     </form>
   </div>
@@ -707,6 +788,15 @@
     return btn;
   }
 
+  function plainButton(label, style, onClick) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "small" + (style ? " " + style : "");
+    btn.textContent = label;
+    btn.addEventListener("click", onClick);
+    return btn;
+  }
+
   function renderList(container, instances, builder, emptyText) {
     container.innerHTML = "";
     if (instances.length === 0) {
@@ -772,13 +862,104 @@
     await refresh();
   }
 
+  /* ---------- manage chores ---------- */
+
+  function manageChoreCard(chore, isArchived) {
+    const card = document.createElement("div");
+    card.className = "chore d-" + chore.difficulty;
+
+    const info = document.createElement("div");
+    info.className = "info";
+    const freq = frequencyLabel(chore) || "Anytime";
+    info.innerHTML = "<p class='name'>" + escapeHtml(chore.name) + "</p>" +
+                     "<p class='meta'>" + escapeHtml(freq) + "</p>";
+    card.appendChild(info);
+
+    const buttons = document.createElement("div");
+    buttons.className = "buttons";
+
+    if (isArchived) {
+      buttons.appendChild(actionButton("Restore", "outline", function () {
+        return unarchiveChore(chore.id);
+      }));
+    } else {
+      buttons.appendChild(plainButton("Edit", "outline", function () {
+        openEditChore(chore);
+      }));
+      buttons.appendChild(actionButton("Archive", null, function () {
+        return archiveChore(chore.id);
+      }));
+    }
+
+    card.appendChild(buttons);
+    return card;
+  }
+
+  async function loadManageChores() {
+    const { data, error } = await db.from("chores").select("*").order("name");
+    if (error) {
+      toast("Couldn't load your chores.");
+      return;
+    }
+    const rows = data || [];
+    const active = rows.filter(function (c) { return c.is_active; });
+    const archived = rows.filter(function (c) { return !c.is_active; });
+
+    renderList($("manage-active"), active, function (c) {
+      return manageChoreCard(c, false);
+    }, "No active chores.");
+
+    renderList($("manage-archived"), archived, function (c) {
+      return manageChoreCard(c, true);
+    }, "Nothing archived.");
+  }
+
+  async function archiveChore(id) {
+    const { error } = await db.rpc("archive_chore", { p_chore_id: id });
+    if (error) throw error;
+    toast("Archived.");
+    await loadManageChores();
+    await refresh();
+  }
+
+  async function unarchiveChore(id) {
+    const { error } = await db.rpc("unarchive_chore", { p_chore_id: id });
+    if (error) throw error;
+    toast("Restored.");
+    await loadManageChores();
+    await refresh();
+  }
+
+  let editingChoreId = null;
+
+  function syncEditFormBlocks() {
+    $("edit-days-block").classList.toggle("hidden", $("e-frequency").value !== "daily");
+  }
+
+  function openEditChore(chore) {
+    editingChoreId = chore.id;
+    $("edit-chore-error").classList.add("hidden");
+    $("e-name").value = chore.name;
+    $("e-difficulty").value = chore.difficulty;
+    $("e-frequency").value = chore.frequency;
+    const days = chore.active_days || [];
+    $("edit-days").querySelectorAll("input").forEach(function (box) {
+      box.checked = days.indexOf(Number(box.value)) !== -1;
+    });
+    syncEditFormBlocks();
+    openSheet("edit-chore-overlay");
+    $("e-name").focus();
+  }
+
   /* ---------- sheets ---------- */
 
   function openSheet(id) { $(id).classList.remove("hidden"); }
   function closeSheet(id) { $(id).classList.add("hidden"); }
 
+  const ALL_OVERLAYS = ["add-overlay", "log-overlay", "gift-overlay", "manage-overlay", "edit-chore-overlay"];
+
   function anySheetOpen() {
-    return ["add-overlay", "log-overlay", "gift-overlay"].some(function (id) {
+    return ALL_OVERLAYS.some(function (id) {
       return !$(id).classList.contains("hidden");
     });
   }
@@ -813,9 +994,18 @@
   $("cancel-add").addEventListener("click", function () { closeSheet("add-overlay"); });
   $("cancel-log").addEventListener("click", function () { closeSheet("log-overlay"); });
   $("cancel-gift").addEventListener("click", function () { closeSheet("gift-overlay"); });
+  $("cancel-edit-chore").addEventListener("click", function () { closeSheet("edit-chore-overlay"); });
   $("c-frequency").addEventListener("change", syncFormBlocks);
+  $("e-frequency").addEventListener("change", syncEditFormBlocks);
 
-  ["add-overlay", "log-overlay", "gift-overlay"].forEach(function (id) {
+  $("open-manage").addEventListener("click", async function () {
+    openSheet("manage-overlay");
+    await loadManageChores();
+  });
+
+  $("close-manage").addEventListener("click", function () { closeSheet("manage-overlay"); });
+
+  ALL_OVERLAYS.forEach(function (id) {
     $(id).addEventListener("click", function (event) {
       if (event.target === $(id)) closeSheet(id);
     });
@@ -823,7 +1013,7 @@
 
   document.addEventListener("keydown", function (event) {
     if (event.key !== "Escape") return;
-    ["add-overlay", "log-overlay", "gift-overlay"].forEach(closeSheet);
+    ALL_OVERLAYS.forEach(closeSheet);
   });
 
   $("add-form").addEventListener("submit", async function (event) {
@@ -916,6 +1106,47 @@
 
     closeSheet("gift-overlay");
     toast("Sent.");
+    await refresh();
+  });
+
+  $("edit-chore-form").addEventListener("submit", async function (event) {
+    event.preventDefault();
+    $("edit-chore-error").classList.add("hidden");
+
+    const frequency = $("e-frequency").value;
+    const days = frequency === "daily"
+      ? Array.prototype.map.call($("edit-days").querySelectorAll("input:checked"), function (box) { return Number(box.value); })
+      : null;
+
+    if (frequency === "daily" && days.length === 0) {
+      $("edit-chore-error").textContent = "Pick at least one day of the week.";
+      $("edit-chore-error").classList.remove("hidden");
+      return;
+    }
+
+    $("edit-chore-submit").disabled = true;
+    $("edit-chore-submit").textContent = "Saving…";
+
+    const { error } = await db.rpc("update_chore", {
+      p_chore_id: editingChoreId,
+      p_name: $("e-name").value,
+      p_difficulty: $("e-difficulty").value,
+      p_frequency: frequency,
+      p_active_days: days
+    });
+
+    $("edit-chore-submit").disabled = false;
+    $("edit-chore-submit").textContent = "Save changes";
+
+    if (error) {
+      $("edit-chore-error").textContent = error.message || "Couldn't save that.";
+      $("edit-chore-error").classList.remove("hidden");
+      return;
+    }
+
+    closeSheet("edit-chore-overlay");
+    toast("Saved.");
+    await loadManageChores();
     await refresh();
   });
 
