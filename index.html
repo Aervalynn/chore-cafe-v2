@@ -759,6 +759,13 @@
     await refresh();
   }
 
+  async function nudgeChore(id) {
+    const { error } = await db.rpc("nudge_chore", { p_instance_id: id });
+    if (error) throw error;
+    toast("Nudge sent.");
+    await refresh();
+  }
+
   /* ---------- sheets ---------- */
 
   function openSheet(id) { $(id).classList.remove("hidden"); }
@@ -832,7 +839,7 @@
     }
 
     $("add-submit").disabled = true;
-    $("add-submit").textContent = "Adding\u2026";
+    $("add-submit").textContent = "Adding…";
 
     const { error } = await db.rpc("create_chore", {
       p_name: $("c-name").value,
@@ -860,7 +867,7 @@
     event.preventDefault();
     $("log-error").classList.add("hidden");
     $("log-submit").disabled = true;
-    $("log-submit").textContent = "Logging\u2026";
+    $("log-submit").textContent = "Logging…";
 
     const { error } = await db.rpc("log_adhoc_task", {
       p_name: $("l-name").value,
@@ -885,7 +892,7 @@
     event.preventDefault();
     $("gift-error").classList.add("hidden");
     $("gift-submit").disabled = true;
-    $("gift-submit").textContent = "Sending\u2026";
+    $("gift-submit").textContent = "Sending…";
 
     const { error } = await db.rpc("gift_coins", {
       p_transaction_id: giftTarget,
@@ -963,7 +970,7 @@
       let text;
       if (row.kind === "gift") {
         text = nameOf(row.from_user) + " to " + nameOf(row.user_id).toLowerCase() +
-               ": \u201c" + row.reason + "\u201d";
+               ": “" + row.reason + "”";
       } else {
         text = nameOf(row.user_id) + " did " + row.reason;
       }
@@ -1051,7 +1058,16 @@
     }, "The board is clear.");
 
     renderList($("theirs"), theirs, function (inst) {
-      return choreCard(inst);
+      const card = choreCard(inst);
+      if (inst.due_date && daysLate(inst.due_date) > 0) {
+        const buttons = document.createElement("div");
+        buttons.className = "buttons";
+        buttons.appendChild(actionButton("Nudge", "outline", function () {
+          return nudgeChore(inst.id);
+        }));
+        card.appendChild(buttons);
+      }
+      return card;
     }, "Nothing claimed.");
 
     const { data: coins } = await db
@@ -1113,7 +1129,7 @@
     event.preventDefault();
     $("error").classList.add("hidden");
     $("signin-btn").disabled = true;
-    $("signin-btn").textContent = "Signing in\u2026";
+    $("signin-btn").textContent = "Signing in…";
 
     const { data, error } = await db.auth.signInWithPassword({
       email: $("email").value.trim(),
