@@ -158,6 +158,20 @@
   .jar .count { font-size: 22px; font-weight: 600; display: block; line-height: 1.2; }
   .jar .label { font-size: 12px; color: var(--muted); }
 
+  .notice {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    background: var(--card);
+    border: 1px dashed var(--tan);
+    border-radius: 12px;
+    padding: 12px 14px;
+    margin-top: 16px;
+  }
+
+  .notice p { margin: 0; font-size: 14px; color: var(--muted); }
+
   .add-bar { display: flex; gap: 10px; margin: 16px 0 4px; }
   .add-bar button { flex: 1; padding: 13px; }
 
@@ -255,6 +269,7 @@
   }
 
   .footer { margin-top: 36px; text-align: center; }
+  .footer .status { font-size: 12px; color: var(--muted); margin: 8px 0 0; }
 
   .overlay {
     position: fixed;
@@ -348,6 +363,11 @@
     </div>
   </header>
 
+  <div id="push-notice" class="notice hidden">
+    <p>Get told when chores go overdue.</p>
+    <button type="button" class="small" id="enable-push">Turn on</button>
+  </div>
+
   <div class="add-bar">
     <button type="button" id="open-add">Add a chore</button>
     <button type="button" class="outline" id="open-log">Log something</button>
@@ -367,6 +387,7 @@
 
   <div class="footer">
     <button type="button" class="quiet" id="signout-btn">Sign out</button>
+    <p class="status" id="push-status"></p>
   </div>
 
 </div>
@@ -469,6 +490,7 @@
 </div>
 
 <script src="config.js"></script>
+<script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
   const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -513,6 +535,56 @@
            String(d.getMonth() + 1).padStart(2, "0") + "-" +
            String(d.getDate()).padStart(2, "0");
   }
+
+  /* ---------- push notifications ---------- */
+
+  window.OneSignalDeferred = window.OneSignalDeferred || [];
+
+  function withOneSignal(fn) {
+    window.OneSignalDeferred.push(fn);
+  }
+
+  function paintPushState(OneSignal) {
+    let granted = false;
+    try {
+      granted = OneSignal.Notifications.permission === true;
+    } catch (err) {
+      granted = false;
+    }
+    const supported = "Notification" in window;
+
+    $("push-notice").classList.toggle("hidden", granted || !supported);
+    $("push-status").textContent = !supported
+      ? "This browser can't do notifications."
+      : granted
+        ? "Notifications are on for this device."
+        : "Notifications are off.";
+  }
+
+  withOneSignal(async function (OneSignal) {
+    try {
+      await OneSignal.init({
+        appId: ONESIGNAL_APP_ID,
+        serviceWorkerPath: "/chore-cafe-v2/OneSignalSDKWorker.js",
+        serviceWorkerParam: { scope: "/chore-cafe-v2/" }
+      });
+      paintPushState(OneSignal);
+      OneSignal.Notifications.addEventListener("permissionChange", function () {
+        paintPushState(OneSignal);
+      });
+      if (me) await OneSignal.login(me.id);
+    } catch (err) {
+      $("push-status").textContent = "Notifications couldn't start up.";
+    }
+  });
+
+  $("enable-push").addEventListener("click", function () {
+    withOneSignal(async function (OneSignal) {
+      await OneSignal.Notifications.requestPermission();
+      paintPushState(OneSignal);
+      if (me) await OneSignal.login(me.id);
+    });
+  });
 
   /* ---------- labels ---------- */
 
@@ -1025,6 +1097,14 @@
     await db.rpc("generate_due_chores");
     await refresh();
     watchForChanges();
+    withOneSignal(async function (OneSignal) {
+      try {
+        await OneSignal.login(user.id);
+        paintPushState(OneSignal);
+      } catch (err) {
+        // Notifications are optional; the board still works without them.
+      }
+    });
   }
 
   /* ---------- auth ---------- */
@@ -1057,6 +1137,9 @@
       db.removeChannel(boardChannel);
       boardChannel = null;
     }
+    withOneSignal(async function (OneSignal) {
+      try { await OneSignal.logout(); } catch (err) { /* ignore */ }
+    });
     await db.auth.signOut();
     me = null;
     showScreen("login");
