@@ -477,6 +477,8 @@
   let settings = null;
   let people = {};
   let giftTarget = null;
+  let boardChannel = null;
+  let refreshTimer = null;
 
   const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -689,6 +691,12 @@
 
   function openSheet(id) { $(id).classList.remove("hidden"); }
   function closeSheet(id) { $(id).classList.add("hidden"); }
+
+  function anySheetOpen() {
+    return ["add-overlay", "log-overlay", "gift-overlay"].some(function (id) {
+      return !$(id).classList.contains("hidden");
+    });
+  }
 
   function syncFormBlocks() {
     const freq = $("c-frequency").value;
@@ -985,12 +993,38 @@
     await loadActivity();
   }
 
+  /* ---------- live sync ---------- */
+
+  function scheduleRefresh() {
+    clearTimeout(refreshTimer);
+    refreshTimer = setTimeout(function () {
+      if (me && !anySheetOpen()) refresh();
+    }, 400);
+  }
+
+  function watchForChanges() {
+    if (boardChannel) {
+      db.removeChannel(boardChannel);
+      boardChannel = null;
+    }
+    boardChannel = db
+      .channel("board")
+      .on("postgres_changes",
+          { event: "*", schema: "public", table: "chore_instances" },
+          scheduleRefresh)
+      .on("postgres_changes",
+          { event: "*", schema: "public", table: "coin_transactions" },
+          scheduleRefresh)
+      .subscribe();
+  }
+
   async function startSession(user) {
     me = user;
     showScreen("board");
     await loadReferenceData();
     await db.rpc("generate_due_chores");
     await refresh();
+    watchForChanges();
   }
 
   /* ---------- auth ---------- */
@@ -1019,6 +1053,10 @@
   });
 
   $("signout-btn").addEventListener("click", async function () {
+    if (boardChannel) {
+      db.removeChannel(boardChannel);
+      boardChannel = null;
+    }
     await db.auth.signOut();
     me = null;
     showScreen("login");
