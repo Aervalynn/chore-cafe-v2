@@ -15,6 +15,8 @@
     --muted: #8B7355;
     --line: #E8DCC4;
     --error: #A33F32;
+    --bounty: #C4622D;
+    --bounty-bg: #FDF0E4;
   }
 
   * { box-sizing: border-box; }
@@ -27,6 +29,16 @@
     font-family: ui-rounded, "Segoe UI", system-ui, sans-serif;
     font-size: 16px;
     line-height: 1.5;
+  }
+
+  .wrap {
+    max-width: 560px;
+    margin: 0 auto;
+    padding: 20px 16px 60px;
+  }
+
+  .centered {
+    min-height: 100vh;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -42,29 +54,9 @@
     max-width: 380px;
   }
 
-  .sign {
-    text-align: center;
-    margin-bottom: 28px;
-  }
-
-  .sign h1 {
-    font-size: 28px;
-    font-weight: 600;
-    margin: 0 0 4px;
-    letter-spacing: -0.01em;
-  }
-
-  .sign p {
-    margin: 0;
-    color: var(--muted);
-    font-size: 14px;
-  }
-
-  .rule {
-    border: none;
-    border-top: 1px dashed var(--line);
-    margin: 24px 0;
-  }
+  .sign { text-align: center; margin-bottom: 28px; }
+  .sign h1 { font-size: 28px; font-weight: 600; margin: 0 0 4px; letter-spacing: -0.01em; }
+  .sign p { margin: 0; color: var(--muted); font-size: 14px; }
 
   label {
     display: block;
@@ -93,21 +85,22 @@
   }
 
   button {
-    width: 100%;
-    padding: 13px;
+    font-family: inherit;
     font-size: 16px;
     font-weight: 600;
-    font-family: inherit;
     color: #fff;
     background: var(--tan);
     border: none;
     border-radius: 10px;
+    padding: 12px;
     cursor: pointer;
   }
 
   button:hover:not(:disabled) { background: var(--tan-dark); }
   button:focus-visible { outline: 2px solid var(--cocoa); outline-offset: 2px; }
-  button:disabled { opacity: 0.6; cursor: default; }
+  button:disabled { opacity: 0.55; cursor: default; }
+
+  button.wide { width: 100%; padding: 13px; }
 
   button.quiet {
     background: none;
@@ -117,68 +110,166 @@
     padding: 8px;
   }
 
-  button.quiet:hover:not(:disabled) {
+  button.quiet:hover:not(:disabled) { background: var(--cream); color: var(--cocoa); }
+
+  button.small { font-size: 14px; padding: 9px 16px; }
+
+  button.outline {
+    background: none;
+    color: var(--muted);
+    border: 1px solid var(--line);
+  }
+
+  button.outline:hover:not(:disabled) {
     background: var(--cream);
     color: var(--cocoa);
+    border-color: var(--tan);
   }
 
-  .error {
-    color: var(--error);
-    font-size: 14px;
-    margin: 0 0 16px;
-  }
-
+  .error { color: var(--error); font-size: 14px; margin: 0 0 16px; }
   .hidden { display: none; }
 
-  .greeting {
-    font-size: 20px;
-    font-weight: 600;
-    margin: 0 0 4px;
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding-bottom: 16px;
+    border-bottom: 1px dashed var(--line);
+    margin-bottom: 8px;
   }
 
-  .balance {
-    font-size: 15px;
-    color: var(--muted);
-    margin: 0;
-  }
+  header h1 { font-size: 22px; font-weight: 600; margin: 0; letter-spacing: -0.01em; }
+  header .who { font-size: 13px; color: var(--muted); margin: 2px 0 0; }
 
-  .note {
+  .jar { text-align: right; white-space: nowrap; }
+  .jar .count { font-size: 22px; font-weight: 600; display: block; line-height: 1.2; }
+  .jar .label { font-size: 12px; color: var(--muted); }
+
+  h2 {
     font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
     color: var(--muted);
-    text-align: center;
-    margin: 0;
+    margin: 28px 0 10px;
   }
+
+  .chore {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 14px 16px;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+  }
+
+  .chore.is-bounty {
+    border: 2px solid var(--bounty);
+    background: var(--bounty-bg);
+  }
+
+  .chore .info { min-width: 0; }
+
+  .chore .name {
+    font-weight: 600;
+    margin: 0 0 3px;
+    overflow-wrap: anywhere;
+  }
+
+  .chore .meta { font-size: 13px; color: var(--muted); margin: 0; }
+  .chore .meta .late { color: var(--error); font-weight: 600; }
+  .chore .meta .coins { color: var(--cocoa); font-weight: 600; }
+
+  .tag {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #fff;
+    background: var(--bounty);
+    border-radius: 4px;
+    padding: 2px 6px;
+    margin-bottom: 5px;
+  }
+
+  .buttons { display: flex; gap: 8px; }
+
+  .empty {
+    color: var(--muted);
+    font-size: 14px;
+    font-style: italic;
+    margin: 0 0 10px;
+    padding: 4px 2px;
+  }
+
+  .toast {
+    position: fixed;
+    left: 50%;
+    bottom: 20px;
+    transform: translateX(-50%);
+    background: var(--cocoa);
+    color: var(--cream);
+    font-size: 14px;
+    padding: 11px 18px;
+    border-radius: 999px;
+    max-width: 90vw;
+    text-align: center;
+  }
+
+  .footer { margin-top: 36px; text-align: center; }
 </style>
 </head>
 <body>
 
-<div class="card">
-
-  <div class="sign">
-    <h1>Chore Cafe</h1>
-    <p id="tagline">Now serving</p>
+<div id="login-screen" class="centered hidden">
+  <div class="card">
+    <div class="sign">
+      <h1>Chore Cafe</h1>
+      <p>Now serving</p>
+    </div>
+    <form id="login" autocomplete="on">
+      <p id="error" class="error hidden"></p>
+      <label for="email">Email</label>
+      <input type="email" id="email" name="email" autocomplete="username" required>
+      <label for="password">Password</label>
+      <input type="password" id="password" name="password" autocomplete="current-password" required>
+      <button type="submit" class="wide" id="signin-btn">Sign in</button>
+    </form>
   </div>
+</div>
 
-  <div id="loading" class="note">Opening up&hellip;</div>
+<div id="loading-screen" class="centered">
+  <p style="color:#8B7355">Opening up&hellip;</p>
+</div>
 
-  <form id="login" class="hidden" autocomplete="on">
-    <p id="error" class="error hidden"></p>
+<div id="board-screen" class="wrap hidden">
 
-    <label for="email">Email</label>
-    <input type="email" id="email" name="email" autocomplete="username" required>
+  <header>
+    <div>
+      <h1>Chore Cafe</h1>
+      <p class="who" id="who"></p>
+    </div>
+    <div class="jar">
+      <span class="count" id="coin-count">0</span>
+      <span class="label">coins</span>
+    </div>
+  </header>
 
-    <label for="password">Password</label>
-    <input type="password" id="password" name="password" autocomplete="current-password" required>
+  <h2>Yours</h2>
+  <div id="mine"></div>
 
-    <button type="submit" id="signin-btn">Sign in</button>
-  </form>
+  <h2>Up for grabs</h2>
+  <div id="pool"></div>
 
-  <div id="app" class="hidden">
-    <p class="greeting" id="greeting"></p>
-    <p class="balance" id="balance"></p>
-    <hr class="rule">
-    <p class="note">The quest board goes here next.</p>
-    <hr class="rule">
+  <h2 id="theirs-heading">Theirs</h2>
+  <div id="theirs"></div>
+
+  <div class="footer">
     <button type="button" class="quiet" id="signout-btn">Sign out</button>
   </div>
 
@@ -193,96 +284,290 @@
 
   const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-  const el = {
-    loading: document.getElementById("loading"),
-    login: document.getElementById("login"),
-    app: document.getElementById("app"),
-    error: document.getElementById("error"),
-    email: document.getElementById("email"),
-    password: document.getElementById("password"),
-    signinBtn: document.getElementById("signin-btn"),
-    signoutBtn: document.getElementById("signout-btn"),
-    greeting: document.getElementById("greeting"),
-    balance: document.getElementById("balance"),
-    tagline: document.getElementById("tagline")
-  };
+  let me = null;
+  let settings = null;
+  let people = {};
 
-  function show(which) {
-    el.loading.classList.add("hidden");
-    el.login.classList.toggle("hidden", which !== "login");
-    el.app.classList.toggle("hidden", which !== "app");
+  function $(id) { return document.getElementById(id); }
+
+  function showScreen(name) {
+    $("loading-screen").classList.toggle("hidden", name !== "loading");
+    $("login-screen").classList.toggle("hidden", name !== "login");
+    $("board-screen").classList.toggle("hidden", name !== "board");
   }
 
-  function showError(message) {
-    el.error.textContent = message;
-    el.error.classList.remove("hidden");
+  function toast(message) {
+    const existing = document.querySelector(".toast");
+    if (existing) existing.remove();
+    const node = document.createElement("div");
+    node.className = "toast";
+    node.setAttribute("role", "status");
+    node.textContent = message;
+    document.body.appendChild(node);
+    setTimeout(function () { node.remove(); }, 3200);
   }
 
-  function clearError() {
-    el.error.textContent = "";
-    el.error.classList.add("hidden");
+  function escapeHtml(text) {
+    const div = document.createElement("div");
+    div.textContent = text;
+    return div.innerHTML;
   }
 
-  async function loadApp(user) {
-    const { data: profile } = await db
-      .from("profiles")
-      .select("display_name")
-      .eq("id", user.id)
-      .single();
+  /* ---------- dates ---------- */
 
-    const name = profile ? profile.display_name : "friend";
-    el.greeting.textContent = "Morning, " + name + ".";
-    el.tagline.textContent = "Signed in";
+  function parseDate(text) {
+    const bits = text.split("-");
+    return new Date(Number(bits[0]), Number(bits[1]) - 1, Number(bits[2]));
+  }
+
+  function daysLate(dueText) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return Math.round((today - parseDate(dueText)) / 86400000);
+  }
+
+  function dueLabel(dueText) {
+    const late = daysLate(dueText);
+    if (late > 1) return "<span class='late'>" + late + " days overdue</span>";
+    if (late === 1) return "<span class='late'>1 day overdue</span>";
+    if (late === 0) return "Due today";
+    if (late === -1) return "Due tomorrow";
+    return "Due in " + Math.abs(late) + " days";
+  }
+
+  /* ---------- coins ---------- */
+
+  function baseValue(difficulty) {
+    if (difficulty === "easy") return settings.coins_easy;
+    if (difficulty === "medium") return settings.coins_medium;
+    return settings.coins_hard;
+  }
+
+  function payout(instance) {
+    const base = baseValue(instance.chores.difficulty);
+    const forfeited = instance.abandoned_by === me.id;
+    if (instance.is_bounty && !forfeited) {
+      return Math.round(base * settings.bounty_multiplier);
+    }
+    return base;
+  }
+
+  /* ---------- rendering ---------- */
+
+  function choreCard(instance) {
+    const card = document.createElement("div");
+    card.className = "chore" + (instance.is_bounty ? " is-bounty" : "");
+
+    const info = document.createElement("div");
+    info.className = "info";
+
+    let html = "";
+    if (instance.is_bounty) html += "<span class='tag'>Bounty</span>";
+    html += "<p class='name'>" + escapeHtml(instance.chores.name) + "</p>";
+    html += "<p class='meta'>" + escapeHtml(instance.chores.category) + " &middot; " +
+            dueLabel(instance.due_date) + " &middot; " +
+            "<span class='coins'>" + payout(instance) + " coins</span></p>";
+    info.innerHTML = html;
+
+    card.appendChild(info);
+    return card;
+  }
+
+  function actionButton(label, style, handler) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "small" + (style ? " " + style : "");
+    btn.textContent = label;
+    btn.addEventListener("click", async function () {
+      btn.disabled = true;
+      try {
+        await handler();
+      } catch (err) {
+        toast(err.message || "Something went wrong.");
+        btn.disabled = false;
+      }
+    });
+    return btn;
+  }
+
+  function renderList(container, instances, builder, emptyText) {
+    container.innerHTML = "";
+    if (instances.length === 0) {
+      const p = document.createElement("p");
+      p.className = "empty";
+      p.textContent = emptyText;
+      container.appendChild(p);
+      return;
+    }
+    instances.forEach(function (instance) {
+      container.appendChild(builder(instance));
+    });
+  }
+
+  /* ---------- actions ---------- */
+
+  async function acceptChore(id) {
+    const { data, error } = await db
+      .from("chore_instances")
+      .update({
+        status: "accepted",
+        accepted_by: me.id,
+        accepted_at: new Date().toISOString()
+      })
+      .eq("id", id)
+      .eq("status", "pool")
+      .select();
+
+    if (error) throw error;
+    if (!data || data.length === 0) toast("Someone beat you to that one.");
+    await refresh();
+  }
+
+  async function releaseChore(id) {
+    const { error } = await db
+      .from("chore_instances")
+      .update({ status: "pool", accepted_by: null, accepted_at: null })
+      .eq("id", id)
+      .eq("accepted_by", me.id);
+
+    if (error) throw error;
+    toast("Back on the board.");
+    await refresh();
+  }
+
+  async function completeChore(id) {
+    const { error } = await db.rpc("complete_chore", { instance_id: id });
+    if (error) throw error;
+    toast("Nice work.");
+    await refresh();
+  }
+
+  /* ---------- loading ---------- */
+
+  async function loadReferenceData() {
+    const settingsResult = await db.from("settings").select("*").eq("id", 1).single();
+    settings = settingsResult.data;
+
+    const profilesResult = await db.from("profiles").select("id, display_name");
+    people = {};
+    (profilesResult.data || []).forEach(function (row) {
+      people[row.id] = row.display_name;
+    });
+
+    $("who").textContent = "Signed in as " + (people[me.id] || "you");
+
+    const otherName = Object.keys(people)
+      .filter(function (id) { return id !== me.id; })
+      .map(function (id) { return people[id]; })[0];
+
+    $("theirs-heading").textContent = otherName ? otherName + "'s" : "Theirs";
+  }
+
+  async function refresh() {
+    const { data: instances, error } = await db
+      .from("chore_instances")
+      .select("*, chores(*)")
+      .neq("status", "completed")
+      .order("due_date", { ascending: true });
+
+    if (error) {
+      toast("Couldn't load the board. Check your connection.");
+      return;
+    }
+
+    const rows = instances || [];
+
+    const mine = rows.filter(function (r) {
+      return r.status === "accepted" && r.accepted_by === me.id;
+    });
+    const pool = rows.filter(function (r) { return r.status === "pool"; });
+    const theirs = rows.filter(function (r) {
+      return r.status === "accepted" && r.accepted_by !== me.id;
+    });
+
+    renderList($("mine"), mine, function (inst) {
+      const card = choreCard(inst);
+      const buttons = document.createElement("div");
+      buttons.className = "buttons";
+      buttons.appendChild(actionButton("Release", "outline", function () {
+        return releaseChore(inst.id);
+      }));
+      buttons.appendChild(actionButton("Done", null, function () {
+        return completeChore(inst.id);
+      }));
+      card.appendChild(buttons);
+      return card;
+    }, "Nothing on your tray.");
+
+    renderList($("pool"), pool, function (inst) {
+      const card = choreCard(inst);
+      card.appendChild(actionButton("Accept", null, function () {
+        return acceptChore(inst.id);
+      }));
+      return card;
+    }, "The board is clear.");
+
+    renderList($("theirs"), theirs, function (inst) {
+      return choreCard(inst);
+    }, "Nothing claimed.");
 
     const { data: coins } = await db
       .from("coin_transactions")
       .select("amount")
-      .eq("user_id", user.id);
+      .eq("user_id", me.id);
 
-    const total = (coins || []).reduce(function (sum, row) {
-      return sum + row.amount;
-    }, 0);
-
-    el.balance.textContent = total + " coins in the jar.";
-    show("app");
+    const total = (coins || []).reduce(function (sum, row) { return sum + row.amount; }, 0);
+    $("coin-count").textContent = total;
   }
 
-  el.login.addEventListener("submit", async function (event) {
+  async function startSession(user) {
+    me = user;
+    showScreen("board");
+    await loadReferenceData();
+    await refresh();
+  }
+
+  /* ---------- auth ---------- */
+
+  $("login").addEventListener("submit", async function (event) {
     event.preventDefault();
-    clearError();
-    el.signinBtn.disabled = true;
-    el.signinBtn.textContent = "Signing in\u2026";
+    $("error").classList.add("hidden");
+    $("signin-btn").disabled = true;
+    $("signin-btn").textContent = "Signing in\u2026";
 
     const { data, error } = await db.auth.signInWithPassword({
-      email: el.email.value.trim(),
-      password: el.password.value
+      email: $("email").value.trim(),
+      password: $("password").value
     });
 
-    el.signinBtn.disabled = false;
-    el.signinBtn.textContent = "Sign in";
+    $("signin-btn").disabled = false;
+    $("signin-btn").textContent = "Sign in";
+    $("password").value = "";
 
     if (error) {
-      showError("That email and password don't match an account.");
-      el.password.value = "";
+      $("error").textContent = "That email and password don't match an account.";
+      $("error").classList.remove("hidden");
       return;
     }
-
-    el.password.value = "";
-    loadApp(data.user);
+    startSession(data.user);
   });
 
-  el.signoutBtn.addEventListener("click", async function () {
+  $("signout-btn").addEventListener("click", async function () {
     await db.auth.signOut();
-    el.tagline.textContent = "Now serving";
-    show("login");
+    me = null;
+    showScreen("login");
+  });
+
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "visible" && me) refresh();
   });
 
   (async function start() {
     const { data } = await db.auth.getSession();
     if (data.session) {
-      loadApp(data.session.user);
+      startSession(data.session.user);
     } else {
-      show("login");
+      showScreen("login");
     }
   })();
 </script>
