@@ -31,11 +31,7 @@
     line-height: 1.5;
   }
 
-  .wrap {
-    max-width: 560px;
-    margin: 0 auto;
-    padding: 20px 16px 60px;
-  }
+  .wrap { max-width: 560px; margin: 0 auto; padding: 20px 16px 60px; }
 
   .centered {
     min-height: 100vh;
@@ -66,7 +62,11 @@
     margin-bottom: 6px;
   }
 
-  input {
+  input[type="email"],
+  input[type="password"],
+  input[type="text"],
+  input[type="date"],
+  select {
     width: 100%;
     padding: 12px 14px;
     font-size: 16px;
@@ -78,7 +78,7 @@
     margin-bottom: 16px;
   }
 
-  input:focus {
+  input:focus, select:focus {
     outline: 2px solid var(--tan);
     outline-offset: 1px;
     border-color: var(--tan);
@@ -136,7 +136,6 @@
     gap: 12px;
     padding-bottom: 16px;
     border-bottom: 1px dashed var(--line);
-    margin-bottom: 8px;
   }
 
   header h1 { font-size: 22px; font-weight: 600; margin: 0; letter-spacing: -0.01em; }
@@ -145,6 +144,8 @@
   .jar { text-align: right; white-space: nowrap; }
   .jar .count { font-size: 22px; font-weight: 600; display: block; line-height: 1.2; }
   .jar .label { font-size: 12px; color: var(--muted); }
+
+  .add-bar { margin: 16px 0 4px; }
 
   h2 {
     font-size: 13px;
@@ -167,19 +168,9 @@
     gap: 14px;
   }
 
-  .chore.is-bounty {
-    border: 2px solid var(--bounty);
-    background: var(--bounty-bg);
-  }
-
+  .chore.is-bounty { border: 2px solid var(--bounty); background: var(--bounty-bg); }
   .chore .info { min-width: 0; }
-
-  .chore .name {
-    font-weight: 600;
-    margin: 0 0 3px;
-    overflow-wrap: anywhere;
-  }
-
+  .chore .name { font-weight: 600; margin: 0 0 3px; overflow-wrap: anywhere; }
   .chore .meta { font-size: 13px; color: var(--muted); margin: 0; }
   .chore .meta .late { color: var(--error); font-weight: 600; }
   .chore .meta .coins { color: var(--cocoa); font-weight: 600; }
@@ -219,9 +210,77 @@
     border-radius: 999px;
     max-width: 90vw;
     text-align: center;
+    z-index: 100;
   }
 
   .footer { margin-top: 36px; text-align: center; }
+
+  /* ---------- add sheet ---------- */
+
+  .overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(92, 64, 51, 0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    overflow-y: auto;
+    z-index: 60;
+  }
+
+  .sheet {
+    background: var(--card);
+    border-radius: 16px;
+    padding: 24px;
+    width: 100%;
+    max-width: 420px;
+    max-height: 92vh;
+    overflow-y: auto;
+  }
+
+  .sheet h2 {
+    font-size: 20px;
+    font-weight: 600;
+    text-transform: none;
+    letter-spacing: -0.01em;
+    color: var(--cocoa);
+    margin: 0 0 20px;
+  }
+
+  .days {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 16px;
+  }
+
+  .days input { position: absolute; opacity: 0; width: 0; height: 0; }
+
+  .days label { margin: 0; }
+
+  .days span {
+    display: inline-block;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--muted);
+    background: var(--cream);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 7px 13px;
+    cursor: pointer;
+  }
+
+  .days input:checked + span {
+    background: var(--tan);
+    border-color: var(--tan);
+    color: #fff;
+  }
+
+  .days input:focus-visible + span { outline: 2px solid var(--cocoa); outline-offset: 2px; }
+
+  .sheet-actions { display: flex; gap: 10px; margin-top: 4px; }
+  .sheet-actions button { flex: 1; padding: 13px; }
 </style>
 </head>
 <body>
@@ -260,6 +319,10 @@
     </div>
   </header>
 
+  <div class="add-bar">
+    <button type="button" class="wide" id="open-add">Add a chore</button>
+  </div>
+
   <h2>Yours</h2>
   <div id="mine"></div>
 
@@ -273,6 +336,64 @@
     <button type="button" class="quiet" id="signout-btn">Sign out</button>
   </div>
 
+</div>
+
+<div id="add-overlay" class="overlay hidden">
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="add-title">
+    <h2 id="add-title">New chore</h2>
+    <form id="add-form">
+      <p id="add-error" class="error hidden"></p>
+
+      <label for="c-name">What needs doing</label>
+      <input type="text" id="c-name" maxlength="80" required>
+
+      <label for="c-category">Category</label>
+      <select id="c-category">
+        <option value="Pet Care">Pet Care</option>
+        <option value="Kitchen">Kitchen</option>
+        <option value="Maintenance">Maintenance</option>
+        <option value="Deep Clean">Deep Clean</option>
+      </select>
+
+      <label for="c-difficulty">Difficulty</label>
+      <select id="c-difficulty">
+        <option value="easy">Easy</option>
+        <option value="medium" selected>Medium</option>
+        <option value="hard">Hard</option>
+      </select>
+
+      <label for="c-frequency">How often</label>
+      <select id="c-frequency">
+        <option value="one_time">Just this once</option>
+        <option value="daily">Certain days each week</option>
+        <option value="weekly" selected>Weekly</option>
+        <option value="biweekly">Every two weeks</option>
+        <option value="monthly">Monthly</option>
+        <option value="quarterly">Every three months</option>
+      </select>
+
+      <div id="days-block" class="hidden">
+        <label>Which days</label>
+        <div class="days" id="days">
+          <label><input type="checkbox" value="1"><span>Mon</span></label>
+          <label><input type="checkbox" value="2"><span>Tue</span></label>
+          <label><input type="checkbox" value="3"><span>Wed</span></label>
+          <label><input type="checkbox" value="4"><span>Thu</span></label>
+          <label><input type="checkbox" value="5"><span>Fri</span></label>
+          <label><input type="checkbox" value="6"><span>Sat</span></label>
+          <label><input type="checkbox" value="0"><span>Sun</span></label>
+        </div>
+      </div>
+
+      <label for="c-due">First due date</label>
+      <input type="date" id="c-due" required>
+
+      <div class="sheet-actions">
+        <button type="button" class="outline" id="cancel-add">Cancel</button>
+        <button type="submit" id="add-submit">Add to the board</button>
+      </div>
+    </form>
+  </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -311,6 +432,13 @@
     const div = document.createElement("div");
     div.textContent = text;
     return div.innerHTML;
+  }
+
+  function todayISO() {
+    const d = new Date();
+    return d.getFullYear() + "-" +
+           String(d.getMonth() + 1).padStart(2, "0") + "-" +
+           String(d.getDate()).padStart(2, "0");
   }
 
   /* ---------- dates ---------- */
@@ -441,6 +569,86 @@
     toast("Nice work.");
     await refresh();
   }
+
+  /* ---------- add a chore ---------- */
+
+  function openAdd() {
+    $("add-form").reset();
+    $("add-error").classList.add("hidden");
+    $("c-due").value = todayISO();
+    syncDaysBlock();
+    $("add-overlay").classList.remove("hidden");
+    $("c-name").focus();
+  }
+
+  function closeAdd() {
+    $("add-overlay").classList.add("hidden");
+  }
+
+  function syncDaysBlock() {
+    const isDaily = $("c-frequency").value === "daily";
+    $("days-block").classList.toggle("hidden", !isDaily);
+  }
+
+  function chosenDays() {
+    const boxes = $("days").querySelectorAll("input:checked");
+    return Array.prototype.map.call(boxes, function (box) {
+      return Number(box.value);
+    });
+  }
+
+  $("open-add").addEventListener("click", openAdd);
+  $("cancel-add").addEventListener("click", closeAdd);
+  $("c-frequency").addEventListener("change", syncDaysBlock);
+
+  $("add-overlay").addEventListener("click", function (event) {
+    if (event.target === $("add-overlay")) closeAdd();
+  });
+
+  document.addEventListener("keydown", function (event) {
+    if (event.key === "Escape" && !$("add-overlay").classList.contains("hidden")) {
+      closeAdd();
+    }
+  });
+
+  $("add-form").addEventListener("submit", async function (event) {
+    event.preventDefault();
+    $("add-error").classList.add("hidden");
+
+    const frequency = $("c-frequency").value;
+    const days = frequency === "daily" ? chosenDays() : null;
+
+    if (frequency === "daily" && days.length === 0) {
+      $("add-error").textContent = "Pick at least one day of the week.";
+      $("add-error").classList.remove("hidden");
+      return;
+    }
+
+    $("add-submit").disabled = true;
+    $("add-submit").textContent = "Adding\u2026";
+
+    const { error } = await db.rpc("create_chore", {
+      p_name: $("c-name").value,
+      p_category: $("c-category").value,
+      p_difficulty: $("c-difficulty").value,
+      p_frequency: frequency,
+      p_active_days: days,
+      p_due_date: $("c-due").value
+    });
+
+    $("add-submit").disabled = false;
+    $("add-submit").textContent = "Add to the board";
+
+    if (error) {
+      $("add-error").textContent = error.message || "Couldn't add that chore.";
+      $("add-error").classList.remove("hidden");
+      return;
+    }
+
+    closeAdd();
+    toast("Added to the board.");
+    await refresh();
+  });
 
   /* ---------- loading ---------- */
 
