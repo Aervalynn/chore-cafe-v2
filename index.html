@@ -574,15 +574,21 @@
       });
       if (me) await OneSignal.login(me.id);
     } catch (err) {
+      console.error("OneSignal init failed:", err);
       $("push-status").textContent = "Notifications couldn't start up.";
     }
   });
 
   $("enable-push").addEventListener("click", function () {
     withOneSignal(async function (OneSignal) {
-      await OneSignal.Notifications.requestPermission();
-      paintPushState(OneSignal);
-      if (me) await OneSignal.login(me.id);
+      try {
+        await OneSignal.Notifications.requestPermission();
+        paintPushState(OneSignal);
+        if (me) await OneSignal.login(me.id);
+      } catch (err) {
+        console.error("OneSignal requestPermission failed:", err);
+        toast("Couldn't turn on notifications.");
+      }
     });
   });
 
