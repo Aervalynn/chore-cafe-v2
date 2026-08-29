@@ -17,6 +17,7 @@
     --error: #A33F32;
     --bounty: #C4622D;
     --bounty-bg: #FDF0E4;
+    --gift: #6B7F53;
   }
 
   * { box-sizing: border-box; }
@@ -114,6 +115,8 @@
 
   button.small { font-size: 14px; padding: 9px 16px; }
 
+  button.tiny { font-size: 13px; padding: 6px 12px; }
+
   button.outline {
     background: none;
     color: var(--muted);
@@ -125,6 +128,14 @@
     color: var(--cocoa);
     border-color: var(--tan);
   }
+
+  button.gift {
+    background: none;
+    color: var(--gift);
+    border: 1px solid var(--gift);
+  }
+
+  button.gift:hover:not(:disabled) { background: var(--gift); color: #fff; }
 
   .error { color: var(--error); font-size: 14px; margin: 0 0 16px; }
   .hidden { display: none; }
@@ -145,7 +156,8 @@
   .jar .count { font-size: 22px; font-weight: 600; display: block; line-height: 1.2; }
   .jar .label { font-size: 12px; color: var(--muted); }
 
-  .add-bar { margin: 16px 0 4px; }
+  .add-bar { display: flex; gap: 10px; margin: 16px 0 4px; }
+  .add-bar button { flex: 1; padding: 13px; }
 
   h2 {
     font-size: 13px;
@@ -188,6 +200,8 @@
     margin-bottom: 5px;
   }
 
+  .tag.anytime { background: var(--muted); }
+
   .buttons { display: flex; gap: 8px; }
 
   .empty {
@@ -197,6 +211,24 @@
     margin: 0 0 10px;
     padding: 4px 2px;
   }
+
+  /* ---------- activity ---------- */
+
+  .entry {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 11px 2px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .entry:last-child { border-bottom: none; }
+  .entry .what { font-size: 15px; margin: 0; overflow-wrap: anywhere; }
+  .entry .when { font-size: 12px; color: var(--muted); margin: 2px 0 0; }
+  .entry .amount { font-weight: 600; white-space: nowrap; }
+  .entry.is-gift .what { color: var(--gift); }
+  .entry .right { display: flex; align-items: center; gap: 10px; white-space: nowrap; }
 
   .toast {
     position: fixed;
@@ -215,7 +247,7 @@
 
   .footer { margin-top: 36px; text-align: center; }
 
-  /* ---------- add sheet ---------- */
+  /* ---------- sheets ---------- */
 
   .overlay {
     position: fixed;
@@ -245,18 +277,17 @@
     text-transform: none;
     letter-spacing: -0.01em;
     color: var(--cocoa);
+    margin: 0 0 6px;
+  }
+
+  .sheet .lead {
+    font-size: 14px;
+    color: var(--muted);
     margin: 0 0 20px;
   }
 
-  .days {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin-bottom: 16px;
-  }
-
+  .days { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }
   .days input { position: absolute; opacity: 0; width: 0; height: 0; }
-
   .days label { margin: 0; }
 
   .days span {
@@ -271,12 +302,7 @@
     cursor: pointer;
   }
 
-  .days input:checked + span {
-    background: var(--tan);
-    border-color: var(--tan);
-    color: #fff;
-  }
-
+  .days input:checked + span { background: var(--tan); border-color: var(--tan); color: #fff; }
   .days input:focus-visible + span { outline: 2px solid var(--cocoa); outline-offset: 2px; }
 
   .sheet-actions { display: flex; gap: 10px; margin-top: 4px; }
@@ -320,7 +346,8 @@
   </header>
 
   <div class="add-bar">
-    <button type="button" class="wide" id="open-add">Add a chore</button>
+    <button type="button" id="open-add">Add a chore</button>
+    <button type="button" class="outline" id="open-log">Log something</button>
   </div>
 
   <h2>Yours</h2>
@@ -332,28 +359,25 @@
   <h2 id="theirs-heading">Theirs</h2>
   <div id="theirs"></div>
 
+  <h2>Recently</h2>
+  <div id="activity"></div>
+
   <div class="footer">
     <button type="button" class="quiet" id="signout-btn">Sign out</button>
   </div>
 
 </div>
 
+<!-- add a chore -->
 <div id="add-overlay" class="overlay hidden">
   <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="add-title">
     <h2 id="add-title">New chore</h2>
+    <p class="lead">Goes on the board for either of you to pick up.</p>
     <form id="add-form">
       <p id="add-error" class="error hidden"></p>
 
       <label for="c-name">What needs doing</label>
       <input type="text" id="c-name" maxlength="80" required>
-
-      <label for="c-category">Category</label>
-      <select id="c-category">
-        <option value="Pet Care">Pet Care</option>
-        <option value="Kitchen">Kitchen</option>
-        <option value="Maintenance">Maintenance</option>
-        <option value="Deep Clean">Deep Clean</option>
-      </select>
 
       <label for="c-difficulty">Difficulty</label>
       <select id="c-difficulty">
@@ -364,7 +388,8 @@
 
       <label for="c-frequency">How often</label>
       <select id="c-frequency">
-        <option value="one_time">Just this once</option>
+        <option value="one_time">One-time bounty</option>
+        <option value="on_demand">Whenever it needs doing</option>
         <option value="daily">Certain days each week</option>
         <option value="weekly" selected>Weekly</option>
         <option value="biweekly">Every two weeks</option>
@@ -385,12 +410,59 @@
         </div>
       </div>
 
-      <label for="c-due">First due date</label>
-      <input type="date" id="c-due" required>
+      <div id="due-block">
+        <label for="c-due">First due date</label>
+        <input type="date" id="c-due">
+      </div>
 
       <div class="sheet-actions">
         <button type="button" class="outline" id="cancel-add">Cancel</button>
         <button type="submit" id="add-submit">Add to the board</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- log something you did -->
+<div id="log-overlay" class="overlay hidden">
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="log-title">
+    <h2 id="log-title">Log something you did</h2>
+    <p class="lead">For work that was never on the board. Paid at the usual rate.</p>
+    <form id="log-form">
+      <p id="log-error" class="error hidden"></p>
+
+      <label for="l-name">What did you do</label>
+      <input type="text" id="l-name" maxlength="80" required>
+
+      <label for="l-difficulty">Difficulty</label>
+      <select id="l-difficulty">
+        <option value="easy">Easy</option>
+        <option value="medium" selected>Medium</option>
+        <option value="hard">Hard</option>
+      </select>
+
+      <div class="sheet-actions">
+        <button type="button" class="outline" id="cancel-log">Cancel</button>
+        <button type="submit" id="log-submit">Claim the coins</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- gift -->
+<div id="gift-overlay" class="overlay hidden">
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="gift-title">
+    <h2 id="gift-title">Say something nice</h2>
+    <p class="lead" id="gift-lead"></p>
+    <form id="gift-form">
+      <p id="gift-error" class="error hidden"></p>
+
+      <label for="g-note">Your note</label>
+      <input type="text" id="g-note" maxlength="120" required>
+
+      <div class="sheet-actions">
+        <button type="button" class="outline" id="cancel-gift">Cancel</button>
+        <button type="submit" id="gift-submit">Send it</button>
       </div>
     </form>
   </div>
@@ -408,6 +480,7 @@
   let me = null;
   let settings = null;
   let people = {};
+  let giftTarget = null;
 
   function $(id) { return document.getElementById(id); }
 
@@ -455,12 +528,26 @@
   }
 
   function dueLabel(dueText) {
+    if (!dueText) return "Whenever it needs doing";
     const late = daysLate(dueText);
     if (late > 1) return "<span class='late'>" + late + " days overdue</span>";
     if (late === 1) return "<span class='late'>1 day overdue</span>";
     if (late === 0) return "Due today";
     if (late === -1) return "Due tomorrow";
     return "Due in " + Math.abs(late) + " days";
+  }
+
+  function agoLabel(isoText) {
+    const then = new Date(isoText);
+    const mins = Math.round((Date.now() - then.getTime()) / 60000);
+    if (mins < 2) return "just now";
+    if (mins < 60) return mins + " minutes ago";
+    const hours = Math.round(mins / 60);
+    if (hours < 24) return hours === 1 ? "an hour ago" : hours + " hours ago";
+    const days = Math.round(hours / 24);
+    if (days === 1) return "yesterday";
+    if (days < 30) return days + " days ago";
+    return then.toLocaleDateString();
   }
 
   /* ---------- coins ---------- */
@@ -491,9 +578,9 @@
 
     let html = "";
     if (instance.is_bounty) html += "<span class='tag'>Bounty</span>";
+    else if (!instance.due_date) html += "<span class='tag anytime'>Anytime</span>";
     html += "<p class='name'>" + escapeHtml(instance.chores.name) + "</p>";
-    html += "<p class='meta'>" + escapeHtml(instance.chores.category) + " &middot; " +
-            dueLabel(instance.due_date) + " &middot; " +
+    html += "<p class='meta'>" + dueLabel(instance.due_date) + " &middot; " +
             "<span class='coins'>" + payout(instance) + " coins</span></p>";
     info.innerHTML = html;
 
@@ -530,6 +617,12 @@
     instances.forEach(function (instance) {
       container.appendChild(builder(instance));
     });
+  }
+
+  function nameOf(id) {
+    if (!id) return "Someone";
+    if (id === me.id) return "You";
+    return people[id] || "They";
   }
 
   /* ---------- actions ---------- */
@@ -570,45 +663,54 @@
     await refresh();
   }
 
-  /* ---------- add a chore ---------- */
+  /* ---------- sheets ---------- */
 
-  function openAdd() {
-    $("add-form").reset();
-    $("add-error").classList.add("hidden");
-    $("c-due").value = todayISO();
-    syncDaysBlock();
-    $("add-overlay").classList.remove("hidden");
-    $("c-name").focus();
-  }
+  function openSheet(id) { $(id).classList.remove("hidden"); }
+  function closeSheet(id) { $(id).classList.add("hidden"); }
 
-  function closeAdd() {
-    $("add-overlay").classList.add("hidden");
-  }
-
-  function syncDaysBlock() {
-    const isDaily = $("c-frequency").value === "daily";
-    $("days-block").classList.toggle("hidden", !isDaily);
+  function syncFormBlocks() {
+    const freq = $("c-frequency").value;
+    $("days-block").classList.toggle("hidden", freq !== "daily");
+    $("due-block").classList.toggle("hidden", freq === "on_demand");
   }
 
   function chosenDays() {
     const boxes = $("days").querySelectorAll("input:checked");
-    return Array.prototype.map.call(boxes, function (box) {
-      return Number(box.value);
-    });
+    return Array.prototype.map.call(boxes, function (box) { return Number(box.value); });
   }
 
-  $("open-add").addEventListener("click", openAdd);
-  $("cancel-add").addEventListener("click", closeAdd);
-  $("c-frequency").addEventListener("change", syncDaysBlock);
+  $("open-add").addEventListener("click", function () {
+    $("add-form").reset();
+    $("add-error").classList.add("hidden");
+    $("c-due").value = todayISO();
+    syncFormBlocks();
+    openSheet("add-overlay");
+    $("c-name").focus();
+  });
 
-  $("add-overlay").addEventListener("click", function (event) {
-    if (event.target === $("add-overlay")) closeAdd();
+  $("open-log").addEventListener("click", function () {
+    $("log-form").reset();
+    $("log-error").classList.add("hidden");
+    openSheet("log-overlay");
+    $("l-name").focus();
+  });
+
+  $("cancel-add").addEventListener("click", function () { closeSheet("add-overlay"); });
+  $("cancel-log").addEventListener("click", function () { closeSheet("log-overlay"); });
+  $("cancel-gift").addEventListener("click", function () { closeSheet("gift-overlay"); });
+  $("c-frequency").addEventListener("change", syncFormBlocks);
+
+  ["add-overlay", "log-overlay", "gift-overlay"].forEach(function (id) {
+    $(id).addEventListener("click", function (event) {
+      if (event.target === $(id)) closeSheet(id);
+    });
   });
 
   document.addEventListener("keydown", function (event) {
-    if (event.key === "Escape" && !$("add-overlay").classList.contains("hidden")) {
-      closeAdd();
-    }
+    if (event.key !== "Escape") return;
+    ["add-overlay", "log-overlay", "gift-overlay"].forEach(function (id) {
+      closeSheet(id);
+    });
   });
 
   $("add-form").addEventListener("submit", async function (event) {
@@ -623,17 +725,21 @@
       $("add-error").classList.remove("hidden");
       return;
     }
+    if (frequency !== "on_demand" && !$("c-due").value) {
+      $("add-error").textContent = "Pick a due date.";
+      $("add-error").classList.remove("hidden");
+      return;
+    }
 
     $("add-submit").disabled = true;
     $("add-submit").textContent = "Adding\u2026";
 
     const { error } = await db.rpc("create_chore", {
       p_name: $("c-name").value,
-      p_category: $("c-category").value,
       p_difficulty: $("c-difficulty").value,
       p_frequency: frequency,
       p_active_days: days,
-      p_due_date: $("c-due").value
+      p_due_date: frequency === "on_demand" ? null : $("c-due").value
     });
 
     $("add-submit").disabled = false;
@@ -645,8 +751,58 @@
       return;
     }
 
-    closeAdd();
+    closeSheet("add-overlay");
     toast("Added to the board.");
+    await refresh();
+  });
+
+  $("log-form").addEventListener("submit", async function (event) {
+    event.preventDefault();
+    $("log-error").classList.add("hidden");
+    $("log-submit").disabled = true;
+    $("log-submit").textContent = "Logging\u2026";
+
+    const { error } = await db.rpc("log_adhoc_task", {
+      p_name: $("l-name").value,
+      p_difficulty: $("l-difficulty").value
+    });
+
+    $("log-submit").disabled = false;
+    $("log-submit").textContent = "Claim the coins";
+
+    if (error) {
+      $("log-error").textContent = error.message || "Couldn't log that.";
+      $("log-error").classList.remove("hidden");
+      return;
+    }
+
+    closeSheet("log-overlay");
+    toast("Logged.");
+    await refresh();
+  });
+
+  $("gift-form").addEventListener("submit", async function (event) {
+    event.preventDefault();
+    $("gift-error").classList.add("hidden");
+    $("gift-submit").disabled = true;
+    $("gift-submit").textContent = "Sending\u2026";
+
+    const { error } = await db.rpc("gift_coins", {
+      p_transaction_id: giftTarget,
+      p_note: $("g-note").value
+    });
+
+    $("gift-submit").disabled = false;
+    $("gift-submit").textContent = "Send it";
+
+    if (error) {
+      $("gift-error").textContent = error.message || "Couldn't send that.";
+      $("gift-error").classList.remove("hidden");
+      return;
+    }
+
+    closeSheet("gift-overlay");
+    toast("Sent.");
     await refresh();
   });
 
@@ -671,12 +827,91 @@
     $("theirs-heading").textContent = otherName ? otherName + "'s" : "Theirs";
   }
 
+  async function loadActivity() {
+    const container = $("activity");
+
+    const { data: rows } = await db
+      .from("coin_transactions")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(12);
+
+    const { data: myGifts } = await db
+      .from("coin_transactions")
+      .select("recognizes")
+      .eq("from_user", me.id)
+      .not("recognizes", "is", null);
+
+    const alreadyGifted = {};
+    (myGifts || []).forEach(function (row) { alreadyGifted[row.recognizes] = true; });
+
+    container.innerHTML = "";
+
+    if (!rows || rows.length === 0) {
+      const p = document.createElement("p");
+      p.className = "empty";
+      p.textContent = "Nothing yet. Go do a chore.";
+      container.appendChild(p);
+      return;
+    }
+
+    rows.forEach(function (row) {
+      const entry = document.createElement("div");
+      entry.className = "entry" + (row.kind === "gift" ? " is-gift" : "");
+
+      const left = document.createElement("div");
+      let text;
+      if (row.kind === "gift") {
+        text = nameOf(row.from_user) + " to " + nameOf(row.user_id).toLowerCase() +
+               ": \u201c" + row.reason + "\u201d";
+      } else {
+        text = nameOf(row.user_id) + " did " + row.reason;
+      }
+      left.innerHTML = "<p class='what'>" + escapeHtml(text) + "</p>" +
+                       "<p class='when'>" + agoLabel(row.created_at) + "</p>";
+
+      const right = document.createElement("div");
+      right.className = "right";
+
+      const canGift = row.user_id !== me.id &&
+                      row.kind !== "gift" &&
+                      !alreadyGifted[row.id];
+
+      if (canGift) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "tiny gift";
+        btn.textContent = "Gift";
+        btn.addEventListener("click", function () {
+          giftTarget = row.id;
+          $("gift-form").reset();
+          $("gift-error").classList.add("hidden");
+          $("gift-lead").textContent =
+            settings.gift_amount + " coins to " + (people[row.user_id] || "them") +
+            " for " + row.reason + ".";
+          openSheet("gift-overlay");
+          $("g-note").focus();
+        });
+        right.appendChild(btn);
+      }
+
+      const amount = document.createElement("span");
+      amount.className = "amount";
+      amount.textContent = "+" + row.amount;
+      right.appendChild(amount);
+
+      entry.appendChild(left);
+      entry.appendChild(right);
+      container.appendChild(entry);
+    });
+  }
+
   async function refresh() {
     const { data: instances, error } = await db
       .from("chore_instances")
       .select("*, chores(*)")
       .neq("status", "completed")
-      .order("due_date", { ascending: true });
+      .order("due_date", { ascending: true, nullsFirst: false });
 
     if (error) {
       toast("Couldn't load the board. Check your connection.");
@@ -726,6 +961,8 @@
 
     const total = (coins || []).reduce(function (sum, row) { return sum + row.amount; }, 0);
     $("coin-count").textContent = total;
+
+    await loadActivity();
   }
 
   async function startSession(user) {
