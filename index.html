@@ -18,6 +18,9 @@
     --bounty: #C4622D;
     --bounty-bg: #FDF0E4;
     --gift: #6B7F53;
+    --easy: #C9B8A0;
+    --medium: #A98A6B;
+    --hard: #5C4033;
   }
 
   * { box-sizing: border-box; }
@@ -114,7 +117,6 @@
   button.quiet:hover:not(:disabled) { background: var(--cream); color: var(--cocoa); }
 
   button.small { font-size: 14px; padding: 9px 16px; }
-
   button.tiny { font-size: 13px; padding: 6px 12px; }
 
   button.outline {
@@ -171,6 +173,7 @@
   .chore {
     background: var(--card);
     border: 1px solid var(--line);
+    border-left: 5px solid var(--medium);
     border-radius: 12px;
     padding: 14px 16px;
     margin-bottom: 10px;
@@ -180,7 +183,17 @@
     gap: 14px;
   }
 
-  .chore.is-bounty { border: 2px solid var(--bounty); background: var(--bounty-bg); }
+  .chore.d-easy { border-left-color: var(--easy); }
+  .chore.d-medium { border-left-color: var(--medium); }
+  .chore.d-hard { border-left-color: var(--hard); }
+
+  .chore.is-bounty {
+    border-color: var(--bounty);
+    border-width: 2px;
+    border-left-width: 5px;
+    background: var(--bounty-bg);
+  }
+
   .chore .info { min-width: 0; }
   .chore .name { font-weight: 600; margin: 0 0 3px; overflow-wrap: anywhere; }
   .chore .meta { font-size: 13px; color: var(--muted); margin: 0; }
@@ -200,8 +213,6 @@
     margin-bottom: 5px;
   }
 
-  .tag.anytime { background: var(--muted); }
-
   .buttons { display: flex; gap: 8px; }
 
   .empty {
@@ -211,8 +222,6 @@
     margin: 0 0 10px;
     padding: 4px 2px;
   }
-
-  /* ---------- activity ---------- */
 
   .entry {
     display: flex;
@@ -247,8 +256,6 @@
 
   .footer { margin-top: 36px; text-align: center; }
 
-  /* ---------- sheets ---------- */
-
   .overlay {
     position: fixed;
     inset: 0;
@@ -280,11 +287,7 @@
     margin: 0 0 6px;
   }
 
-  .sheet .lead {
-    font-size: 14px;
-    color: var(--muted);
-    margin: 0 0 20px;
-  }
+  .sheet .lead { font-size: 14px; color: var(--muted); margin: 0 0 20px; }
 
   .days { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }
   .days input { position: absolute; opacity: 0; width: 0; height: 0; }
@@ -368,7 +371,6 @@
 
 </div>
 
-<!-- add a chore -->
 <div id="add-overlay" class="overlay hidden">
   <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="add-title">
     <h2 id="add-title">New chore</h2>
@@ -423,7 +425,6 @@
   </div>
 </div>
 
-<!-- log something you did -->
 <div id="log-overlay" class="overlay hidden">
   <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="log-title">
     <h2 id="log-title">Log something you did</h2>
@@ -449,7 +450,6 @@
   </div>
 </div>
 
-<!-- gift -->
 <div id="gift-overlay" class="overlay hidden">
   <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="gift-title">
     <h2 id="gift-title">Say something nice</h2>
@@ -468,19 +468,17 @@
   </div>
 </div>
 
+<script src="config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
-  // ---- PASTE YOUR TWO VALUES BETWEEN THE QUOTES BELOW ----
-  const SUPABASE_URL = "https://dvvcgewfmpivzikokdea.supabase.co";
-  const SUPABASE_KEY = "sb_publishable_TKIREc13KwUJMs8Owtq09w_nNFV6pVj";
-  // --------------------------------------------------------
-
   const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
   let me = null;
   let settings = null;
   let people = {};
   let giftTarget = null;
+
+  const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
   function $(id) { return document.getElementById(id); }
 
@@ -514,7 +512,7 @@
            String(d.getDate()).padStart(2, "0");
   }
 
-  /* ---------- dates ---------- */
+  /* ---------- labels ---------- */
 
   function parseDate(text) {
     const bits = text.split("-");
@@ -535,6 +533,23 @@
     if (late === 0) return "Due today";
     if (late === -1) return "Due tomorrow";
     return "Due in " + Math.abs(late) + " days";
+  }
+
+  function frequencyLabel(chore) {
+    if (chore.frequency === "on_demand") return null;
+    if (chore.frequency === "one_time") return "One-time";
+    if (chore.frequency === "weekly") return "Weekly";
+    if (chore.frequency === "biweekly") return "Every 2 weeks";
+    if (chore.frequency === "monthly") return "Monthly";
+    if (chore.frequency === "quarterly") return "Quarterly";
+    if (chore.frequency === "daily") {
+      const days = chore.active_days || [];
+      if (days.length === 0) return "Weekly";
+      if (days.length === 7) return "Every day";
+      const sorted = days.slice().sort(function (a, b) { return a - b; });
+      return sorted.map(function (d) { return DAY_NAMES[d]; }).join(", ");
+    }
+    return null;
   }
 
   function agoLabel(isoText) {
@@ -570,18 +585,25 @@
   /* ---------- rendering ---------- */
 
   function choreCard(instance) {
+    const chore = instance.chores;
     const card = document.createElement("div");
-    card.className = "chore" + (instance.is_bounty ? " is-bounty" : "");
+    card.className = "chore d-" + chore.difficulty +
+                     (instance.is_bounty ? " is-bounty" : "");
+    card.title = chore.difficulty.charAt(0).toUpperCase() + chore.difficulty.slice(1);
 
     const info = document.createElement("div");
     info.className = "info";
 
+    const parts = [];
+    const freq = frequencyLabel(chore);
+    if (freq) parts.push(escapeHtml(freq));
+    parts.push(dueLabel(instance.due_date));
+    parts.push("<span class='coins'>" + payout(instance) + " coins</span>");
+
     let html = "";
     if (instance.is_bounty) html += "<span class='tag'>Bounty</span>";
-    else if (!instance.due_date) html += "<span class='tag anytime'>Anytime</span>";
-    html += "<p class='name'>" + escapeHtml(instance.chores.name) + "</p>";
-    html += "<p class='meta'>" + dueLabel(instance.due_date) + " &middot; " +
-            "<span class='coins'>" + payout(instance) + " coins</span></p>";
+    html += "<p class='name'>" + escapeHtml(chore.name) + "</p>";
+    html += "<p class='meta'>" + parts.join(" &middot; ") + "</p>";
     info.innerHTML = html;
 
     card.appendChild(info);
@@ -708,9 +730,7 @@
 
   document.addEventListener("keydown", function (event) {
     if (event.key !== "Escape") return;
-    ["add-overlay", "log-overlay", "gift-overlay"].forEach(function (id) {
-      closeSheet(id);
-    });
+    ["add-overlay", "log-overlay", "gift-overlay"].forEach(closeSheet);
   });
 
   $("add-form").addEventListener("submit", async function (event) {
@@ -969,6 +989,7 @@
     me = user;
     showScreen("board");
     await loadReferenceData();
+    await db.rpc("generate_due_chores");
     await refresh();
   }
 
