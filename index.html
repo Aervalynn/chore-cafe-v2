@@ -339,6 +339,104 @@
   }
 
   .sheet .sub-label:first-of-type { margin-top: 4px; }
+
+  .cafe-tabs { display: flex; gap: 10px; margin-bottom: 16px; }
+  .cafe-tabs button { flex: 1; }
+
+  .cafe-scene {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    border-radius: 14px;
+    overflow: hidden;
+    background-color: var(--cream);
+    background-size: cover;
+    background-position: center;
+    border: 1px solid var(--line);
+    margin-bottom: 16px;
+  }
+
+  .cafe-sticker-row {
+    position: absolute;
+    left: 8px;
+    right: 8px;
+    bottom: 8px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
+  }
+
+  .cafe-sticker {
+    width: 64px;
+    height: 64px;
+  }
+
+  .cafe-sticker.positioned {
+    position: absolute;
+    transform: translate(-50%, -50%);
+  }
+
+  .cafe-sticker img {
+    display: block;
+    max-width: 100%;
+    max-height: 100%;
+    margin: 0 auto;
+    filter: drop-shadow(0 2px 3px rgba(92, 64, 51, 0.28));
+  }
+
+  .cafe-sticker-placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 30px;
+    background: var(--card);
+    border: 2px solid var(--line);
+    border-radius: 12px;
+  }
+
+  .bg-choice {
+    width: 100px;
+    height: 75px;
+    border-radius: 10px;
+    border: 2px solid var(--line);
+    background-size: cover;
+    background-position: center;
+    background-color: var(--cream);
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  .bg-choice.chosen { border-color: var(--tan); }
+
+  .shop-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 2px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .shop-item:last-child { border-bottom: none; }
+  .shop-item .info { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .shop-item .thumb {
+    width: 42px;
+    height: 42px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--cream);
+    border-radius: 8px;
+    overflow: hidden;
+    font-size: 20px;
+  }
+  .shop-item .thumb img { max-width: 100%; max-height: 100%; }
+  .shop-item .name { font-weight: 600; margin: 0; }
+  .shop-item .cost { font-size: 12px; color: var(--muted); margin: 0; }
 </style>
 </head>
 <body>
@@ -400,6 +498,7 @@
   <div id="activity"></div>
 
   <div class="footer">
+    <button type="button" class="quiet" id="open-cafe">Café</button>
     <button type="button" class="quiet" id="open-manage">Manage chores</button>
     <button type="button" class="quiet" id="signout-btn">Sign out</button>
     <p class="status" id="push-status"></p>
@@ -567,6 +666,24 @@
         <button type="submit" id="edit-chore-submit">Save changes</button>
       </div>
     </form>
+  </div>
+</div>
+
+<div id="cafe-overlay" class="overlay hidden">
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="cafe-title">
+    <h2 id="cafe-title">Café</h2>
+
+    <div class="cafe-tabs">
+      <button type="button" class="small" id="cafe-tab-mine">Your café</button>
+      <button type="button" class="small outline" id="cafe-tab-theirs">Their café</button>
+    </div>
+
+    <div id="cafe-scene-wrap"></div>
+    <div id="cafe-shop"></div>
+
+    <div class="sheet-actions">
+      <button type="button" class="outline" id="close-cafe">Close</button>
+    </div>
   </div>
 </div>
 
@@ -951,12 +1068,202 @@
     $("e-name").focus();
   }
 
+  /* ---------- café ---------- */
+
+  let cafeViewingId = null;
+
+  function stickerEl(reward) {
+    const wrap = document.createElement("div");
+    wrap.className = "cafe-sticker";
+    wrap.title = reward.name;
+
+    const img = document.createElement("img");
+    img.src = "rewards/" + reward.image_path;
+    img.alt = reward.name;
+    img.onerror = function () {
+      wrap.innerHTML = "";
+      const ph = document.createElement("div");
+      ph.className = "cafe-sticker-placeholder";
+      ph.textContent = CATEGORY_EMOJI[reward.category] || "❓";
+      wrap.appendChild(ph);
+    };
+    wrap.appendChild(img);
+    return wrap;
+  }
+
+  function shopRow(reward) {
+    const row = document.createElement("div");
+    row.className = "shop-item";
+
+    const info = document.createElement("div");
+    info.className = "info";
+
+    const thumb = document.createElement("div");
+    thumb.className = "thumb";
+    const img = document.createElement("img");
+    img.src = "rewards/" + reward.image_path;
+    img.alt = "";
+    img.onerror = function () {
+      thumb.innerHTML = "";
+      thumb.textContent = CATEGORY_EMOJI[reward.category] || "❓";
+    };
+    thumb.appendChild(img);
+    info.appendChild(thumb);
+
+    const text = document.createElement("div");
+    text.innerHTML = "<p class='name'>" + escapeHtml(reward.name) + "</p>" +
+                     "<p class='cost'>" + reward.cost + " coins</p>";
+    info.appendChild(text);
+    row.appendChild(info);
+
+    row.appendChild(actionButton("Buy", null, function () {
+      return buyReward(reward.id);
+    }));
+
+    return row;
+  }
+
+  async function loadCafe(userId) {
+    cafeViewingId = userId;
+    const isMine = userId === me.id;
+
+    $("cafe-tab-mine").className = "small" + (isMine ? "" : " outline");
+    $("cafe-tab-theirs").className = "small" + (isMine ? " outline" : "");
+
+    const { data: rewardRows } = await db.from("rewards").select("*").eq("is_active", true).order("sort_order");
+    const { data: purchaseRows } = await db.from("reward_purchases").select("reward_id, user_id");
+
+    const allRewards = rewardRows || [];
+    const ownedIds = (purchaseRows || [])
+      .filter(function (p) { return p.user_id === userId; })
+      .map(function (p) { return p.reward_id; });
+
+    const openReward = allRewards.find(function (r) { return r.category === "cafe_open"; });
+    const hasOpened = !!openReward && ownedIds.indexOf(openReward.id) !== -1;
+
+    const sceneWrap = $("cafe-scene-wrap");
+    const shopWrap = $("cafe-shop");
+    sceneWrap.innerHTML = "";
+    shopWrap.innerHTML = "";
+
+    if (!hasOpened) {
+      if (isMine) {
+        const lead = document.createElement("p");
+        lead.className = "lead";
+        lead.textContent = "Open your café to start decorating it.";
+        shopWrap.appendChild(lead);
+
+        const choices = document.createElement("div");
+        choices.style.cssText = "display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;";
+        let chosenId = null;
+
+        const starters = allRewards.filter(function (r) {
+          return r.category === "background" && r.is_starter_background;
+        });
+
+        starters.forEach(function (bg) {
+          const opt = document.createElement("div");
+          opt.className = "bg-choice";
+          opt.style.backgroundImage = "url('rewards/" + bg.image_path + "')";
+          opt.title = bg.name;
+          opt.addEventListener("click", function () {
+            chosenId = bg.id;
+            Array.prototype.forEach.call(choices.children, function (c) {
+              c.classList.remove("chosen");
+            });
+            opt.classList.add("chosen");
+          });
+          choices.appendChild(opt);
+        });
+        shopWrap.appendChild(choices);
+
+        shopWrap.appendChild(actionButton(
+          "Open your café (" + (openReward ? openReward.cost : "?") + " coins)",
+          "wide",
+          function () {
+            if (!chosenId) throw new Error("Pick a background first.");
+            return openCafeAction(chosenId);
+          }
+        ));
+      } else {
+        const note = document.createElement("p");
+        note.className = "empty";
+        note.textContent = "They haven't opened their café yet.";
+        sceneWrap.appendChild(note);
+      }
+      return;
+    }
+
+    const ownedRewards = allRewards.filter(function (r) { return ownedIds.indexOf(r.id) !== -1; });
+    const bg = ownedRewards
+      .filter(function (r) { return r.category === "background"; })
+      .sort(function (a, b) { return b.cost - a.cost; })[0];
+
+    const scene = document.createElement("div");
+    scene.className = "cafe-scene";
+    if (bg) scene.style.backgroundImage = "url('rewards/" + bg.image_path + "')";
+
+    const decorations = ownedRewards.filter(function (r) {
+      return r.category === "furniture" || r.category === "cat" || r.category === "toy";
+    });
+
+    const positioned = decorations.filter(function (r) { return r.pos_x != null && r.pos_y != null; });
+    const auto = decorations.filter(function (r) { return r.pos_x == null || r.pos_y == null; });
+
+    positioned.forEach(function (r) {
+      const el = stickerEl(r);
+      el.classList.add("positioned");
+      el.style.left = r.pos_x + "%";
+      el.style.top = r.pos_y + "%";
+      scene.appendChild(el);
+    });
+
+    if (auto.length > 0) {
+      const row = document.createElement("div");
+      row.className = "cafe-sticker-row";
+      auto.forEach(function (r) { row.appendChild(stickerEl(r)); });
+      scene.appendChild(row);
+    }
+
+    sceneWrap.appendChild(scene);
+
+    if (isMine) {
+      const notOwned = allRewards.filter(function (r) {
+        return r.category !== "cafe_open" && ownedIds.indexOf(r.id) === -1;
+      });
+      if (notOwned.length === 0) {
+        const p = document.createElement("p");
+        p.className = "empty";
+        p.textContent = "You've collected everything so far!";
+        shopWrap.appendChild(p);
+      } else {
+        notOwned.forEach(function (r) { shopWrap.appendChild(shopRow(r)); });
+      }
+    }
+  }
+
+  async function openCafeAction(backgroundId) {
+    const { error } = await db.rpc("open_cafe", { p_background_reward_id: backgroundId });
+    if (error) throw error;
+    toast("Your café is open!");
+    await loadCafe(me.id);
+  }
+
+  async function buyReward(id) {
+    const { error } = await db.rpc("purchase_reward", { p_reward_id: id });
+    if (error) throw error;
+    toast("Purchased!");
+    await loadCafe(cafeViewingId);
+  }
+
   /* ---------- sheets ---------- */
 
   function openSheet(id) { $(id).classList.remove("hidden"); }
   function closeSheet(id) { $(id).classList.add("hidden"); }
 
-  const ALL_OVERLAYS = ["add-overlay", "log-overlay", "gift-overlay", "manage-overlay", "edit-chore-overlay"];
+  const ALL_OVERLAYS = ["add-overlay", "log-overlay", "gift-overlay", "manage-overlay", "edit-chore-overlay", "cafe-overlay"];
+
+  const CATEGORY_EMOJI = { cat: "🐱", furniture: "🪑", toy: "🧸", background: "🖼️", cafe_open: "☕" };
 
   function anySheetOpen() {
     return ALL_OVERLAYS.some(function (id) {
@@ -1004,6 +1311,20 @@
   });
 
   $("close-manage").addEventListener("click", function () { closeSheet("manage-overlay"); });
+
+  $("open-cafe").addEventListener("click", async function () {
+    openSheet("cafe-overlay");
+    await loadCafe(me.id);
+  });
+
+  $("close-cafe").addEventListener("click", function () { closeSheet("cafe-overlay"); });
+
+  $("cafe-tab-mine").addEventListener("click", function () { loadCafe(me.id); });
+
+  $("cafe-tab-theirs").addEventListener("click", function () {
+    const otherId = Object.keys(people).filter(function (id) { return id !== me.id; })[0];
+    if (otherId) loadCafe(otherId);
+  });
 
   ALL_OVERLAYS.forEach(function (id) {
     $(id).addEventListener("click", function (event) {
@@ -1208,6 +1529,8 @@
       if (row.kind === "gift") {
         text = nameOf(row.from_user) + " to " + nameOf(row.user_id).toLowerCase() +
                ": “" + row.reason + "”";
+      } else if (row.kind === "spend") {
+        text = nameOf(row.user_id) + " " + row.reason.charAt(0).toLowerCase() + row.reason.slice(1);
       } else {
         text = nameOf(row.user_id) + " did " + row.reason;
       }
@@ -1219,6 +1542,7 @@
 
       const canGift = row.user_id !== me.id &&
                       row.kind !== "gift" &&
+                      row.kind !== "spend" &&
                       !alreadyGifted[row.id];
 
       if (canGift) {
