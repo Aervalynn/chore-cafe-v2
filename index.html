@@ -161,6 +161,34 @@
   .jar .count { font-size: 22px; font-weight: 600; display: block; line-height: 1.2; }
   .jar .label { font-size: 12px; color: var(--muted); }
 
+  .jar-row { display: flex; align-items: center; gap: 8px; justify-content: flex-end; }
+
+  .avatar-circle {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid var(--tan);
+    flex-shrink: 0;
+    display: block;
+  }
+
+  .avatar-fallback {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--tan);
+    color: #fff;
+    font-weight: 700;
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+
+  .leaderboard-btn { display: block; width: 100%; text-align: left; margin: 6px 0 0; }
+
   .notice {
     display: flex;
     align-items: center;
@@ -356,17 +384,6 @@
     margin-bottom: 16px;
   }
 
-  .cafe-sticker-row {
-    position: absolute;
-    left: 8px;
-    right: 8px;
-    bottom: 8px;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    justify-content: center;
-  }
-
   .cafe-sticker {
     width: 64px;
     height: 64px;
@@ -376,6 +393,13 @@
     position: absolute;
     transform: translate(-50%, -50%);
   }
+
+  .cafe-sticker.draggable {
+    cursor: grab;
+    touch-action: none;
+  }
+
+  .cafe-sticker.draggable:active { cursor: grabbing; }
 
   .cafe-sticker img {
     display: block;
@@ -470,10 +494,17 @@
       <p class="who" id="who"></p>
     </div>
     <div class="jar">
-      <span class="count" id="coin-count">0</span>
-      <span class="label">coins</span>
+      <div class="jar-row">
+        <span id="avatar-slot"></span>
+        <span>
+          <span class="count" id="coin-count">0</span>
+          <span class="label">coins</span>
+        </span>
+      </div>
     </div>
   </header>
+
+  <button type="button" class="quiet leaderboard-btn" id="open-leaderboard">🏆 Leaderboard</button>
 
   <div id="push-notice" class="notice hidden">
     <p>Get told when chores go overdue.</p>
@@ -669,6 +700,17 @@
   </div>
 </div>
 
+<div id="leaderboard-overlay" class="overlay hidden">
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="leaderboard-title">
+    <h2 id="leaderboard-title">Leaderboard</h2>
+    <p class="lead">The weekly count resets every Monday at midnight.</p>
+    <div id="leaderboard-list"></div>
+    <div class="sheet-actions">
+      <button type="button" class="outline" id="close-leaderboard">Close</button>
+    </div>
+  </div>
+</div>
+
 <div id="cafe-overlay" class="overlay hidden">
   <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="cafe-title">
     <h2 id="cafe-title">Café</h2>
@@ -696,6 +738,7 @@
   let me = null;
   let settings = null;
   let people = {};
+  let avatars = {};
   let giftTarget = null;
   let boardChannel = null;
   let refreshTimer = null;
@@ -1072,14 +1115,17 @@
 
   let cafeViewingId = null;
 
-  function stickerEl(reward) {
+  function stickerEl(reward, x, y, draggable) {
     const wrap = document.createElement("div");
-    wrap.className = "cafe-sticker";
+    wrap.className = "cafe-sticker positioned" + (draggable ? " draggable" : "");
+    wrap.style.left = x + "%";
+    wrap.style.top = y + "%";
     wrap.title = reward.name;
 
     const img = document.createElement("img");
     img.src = "rewards/" + reward.image_path;
     img.alt = reward.name;
+    img.draggable = false;
     img.onerror = function () {
       wrap.innerHTML = "";
       const ph = document.createElement("div");
@@ -1088,7 +1134,52 @@
       wrap.appendChild(ph);
     };
     wrap.appendChild(img);
+
+    if (draggable) makeDraggable(wrap, reward);
     return wrap;
+  }
+
+  function makeDraggable(el, reward) {
+    let dragging = false;
+
+    el.addEventListener("pointerdown", function (event) {
+      dragging = true;
+      el.setPointerCapture(event.pointerId);
+      el.style.zIndex = 5;
+    });
+
+    el.addEventListener("pointermove", function (event) {
+      if (!dragging) return;
+      const scene = el.closest(".cafe-scene");
+      if (!scene) return;
+      const rect = scene.getBoundingClientRect();
+      let x = ((event.clientX - rect.left) / rect.width) * 100;
+      let y = ((event.clientY - rect.top) / rect.height) * 100;
+      x = Math.max(4, Math.min(96, x));
+      y = Math.max(4, Math.min(96, y));
+      el.style.left = x + "%";
+      el.style.top = y + "%";
+      el.dataset.x = x;
+      el.dataset.y = y;
+    });
+
+    el.addEventListener("pointerup", function (event) {
+      if (!dragging) return;
+      dragging = false;
+      el.style.zIndex = "";
+      const x = Number(el.dataset.x);
+      const y = Number(el.dataset.y);
+      if (!isNaN(x) && !isNaN(y)) saveStickerPosition(reward.id, x, y);
+    });
+  }
+
+  async function saveStickerPosition(rewardId, x, y) {
+    const { error } = await db.rpc("set_sticker_position", {
+      p_reward_id: rewardId,
+      p_x: x,
+      p_y: y
+    });
+    if (error) toast(error.message || "Couldn't save that position.");
   }
 
   function shopRow(reward) {
@@ -1131,12 +1222,13 @@
     $("cafe-tab-theirs").className = "small" + (isMine ? " outline" : "");
 
     const { data: rewardRows } = await db.from("rewards").select("*").eq("is_active", true).order("sort_order");
-    const { data: purchaseRows } = await db.from("reward_purchases").select("reward_id, user_id");
+    const { data: purchaseRows } = await db.from("reward_purchases").select("reward_id, user_id, pos_x, pos_y");
 
     const allRewards = rewardRows || [];
-    const ownedIds = (purchaseRows || [])
-      .filter(function (p) { return p.user_id === userId; })
-      .map(function (p) { return p.reward_id; });
+    const myPurchases = (purchaseRows || []).filter(function (p) { return p.user_id === userId; });
+    const ownedIds = myPurchases.map(function (p) { return p.reward_id; });
+    const posByReward = {};
+    myPurchases.forEach(function (p) { posByReward[p.reward_id] = { x: p.pos_x, y: p.pos_y }; });
 
     const openReward = allRewards.find(function (r) { return r.category === "cafe_open"; });
     const hasOpened = !!openReward && ownedIds.indexOf(openReward.id) !== -1;
@@ -1207,25 +1299,26 @@
       return r.category === "furniture" || r.category === "cat" || r.category === "toy";
     });
 
-    const positioned = decorations.filter(function (r) { return r.pos_x != null && r.pos_y != null; });
-    const auto = decorations.filter(function (r) { return r.pos_x == null || r.pos_y == null; });
-
-    positioned.forEach(function (r) {
-      const el = stickerEl(r);
-      el.classList.add("positioned");
-      el.style.left = r.pos_x + "%";
-      el.style.top = r.pos_y + "%";
-      scene.appendChild(el);
+    decorations.forEach(function (r, i) {
+      const saved = posByReward[r.id] || {};
+      let x = saved.x, y = saved.y;
+      if (x == null || y == null) {
+        const count = decorations.length;
+        x = count <= 1 ? 50 : 10 + i * (80 / (count - 1));
+        y = 84;
+      }
+      scene.appendChild(stickerEl(r, x, y, isMine));
     });
 
-    if (auto.length > 0) {
-      const row = document.createElement("div");
-      row.className = "cafe-sticker-row";
-      auto.forEach(function (r) { row.appendChild(stickerEl(r)); });
-      scene.appendChild(row);
-    }
-
     sceneWrap.appendChild(scene);
+
+    if (isMine && decorations.length > 0) {
+      const hint = document.createElement("p");
+      hint.className = "empty";
+      hint.style.margin = "-10px 0 14px";
+      hint.textContent = "Drag anything to move it around your café.";
+      sceneWrap.appendChild(hint);
+    }
 
     if (isMine) {
       const notOwned = allRewards.filter(function (r) {
@@ -1261,7 +1354,7 @@
   function openSheet(id) { $(id).classList.remove("hidden"); }
   function closeSheet(id) { $(id).classList.add("hidden"); }
 
-  const ALL_OVERLAYS = ["add-overlay", "log-overlay", "gift-overlay", "manage-overlay", "edit-chore-overlay", "cafe-overlay"];
+  const ALL_OVERLAYS = ["add-overlay", "log-overlay", "gift-overlay", "manage-overlay", "edit-chore-overlay", "cafe-overlay", "leaderboard-overlay"];
 
   const CATEGORY_EMOJI = { cat: "🐱", furniture: "🪑", toy: "🧸", background: "🖼️", cafe_open: "☕" };
 
@@ -1304,6 +1397,13 @@
   $("cancel-edit-chore").addEventListener("click", function () { closeSheet("edit-chore-overlay"); });
   $("c-frequency").addEventListener("change", syncFormBlocks);
   $("e-frequency").addEventListener("change", syncEditFormBlocks);
+
+  $("open-leaderboard").addEventListener("click", async function () {
+    openSheet("leaderboard-overlay");
+    await loadLeaderboard();
+  });
+
+  $("close-leaderboard").addEventListener("click", function () { closeSheet("leaderboard-overlay"); });
 
   $("open-manage").addEventListener("click", async function () {
     openSheet("manage-overlay");
@@ -1477,10 +1577,12 @@
     const settingsResult = await db.from("settings").select("*").eq("id", 1).single();
     settings = settingsResult.data;
 
-    const profilesResult = await db.from("profiles").select("id, display_name");
+    const profilesResult = await db.from("profiles").select("id, display_name, avatar_path");
     people = {};
+    avatars = {};
     (profilesResult.data || []).forEach(function (row) {
       people[row.id] = row.display_name;
+      avatars[row.id] = row.avatar_path;
     });
 
     $("who").textContent = "Signed in as " + (people[me.id] || "you");
@@ -1490,6 +1592,56 @@
       .map(function (id) { return people[id]; })[0];
 
     $("theirs-heading").textContent = otherName ? otherName + "'s" : "Theirs";
+
+    renderAvatar();
+  }
+
+  function renderAvatar() {
+    const slot = $("avatar-slot");
+    slot.innerHTML = "";
+    const name = people[me.id] || "?";
+    const initial = name.charAt(0).toUpperCase();
+    const path = avatars[me.id];
+
+    function showFallback() {
+      slot.innerHTML = "";
+      const fb = document.createElement("div");
+      fb.className = "avatar-fallback";
+      fb.textContent = initial;
+      slot.appendChild(fb);
+    }
+
+    if (path) {
+      const img = document.createElement("img");
+      img.className = "avatar-circle";
+      img.src = "avatars/" + path;
+      img.alt = name;
+      img.onerror = showFallback;
+      slot.appendChild(img);
+    } else {
+      showFallback();
+    }
+  }
+
+  async function loadLeaderboard() {
+    const list = $("leaderboard-list");
+    list.innerHTML = "";
+
+    const { data, error } = await db.rpc("get_leaderboard");
+    if (error || !data) {
+      list.innerHTML = "<p class='empty'>Couldn't load the leaderboard.</p>";
+      return;
+    }
+
+    data.forEach(function (row) {
+      const entry = document.createElement("div");
+      entry.className = "entry";
+      entry.innerHTML =
+        "<div><p class='what'>" + escapeHtml(row.display_name) + "</p>" +
+        "<p class='when'>" + row.weekly_coins + " this week</p></div>" +
+        "<span class='amount'>" + row.total_coins + "</span>";
+      list.appendChild(entry);
+    });
   }
 
   async function loadActivity() {
