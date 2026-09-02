@@ -509,6 +509,7 @@
     </div>
     <div class="jar">
       <div class="jar-row">
+        <button type="button" class="leaderboard-icon-btn" id="open-wishlist" aria-label="Wishlist" title="Wishlist">⭐</button>
         <button type="button" class="leaderboard-icon-btn" id="open-leaderboard" aria-label="Leaderboard" title="Leaderboard">🏆</button>
         <span id="avatar-slot"></span>
         <span>
@@ -721,6 +722,45 @@
     <div class="sheet-actions">
       <button type="button" class="outline" id="close-leaderboard">Close</button>
     </div>
+  </div>
+</div>
+
+<div id="wishlist-overlay" class="overlay hidden">
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="wishlist-title">
+    <h2 id="wishlist-title">Wishlist</h2>
+    <p class="lead">Save up for something you want &mdash; your partner can grant it once they're ready.</p>
+
+    <p class="sub-label" id="wishlist-mine-heading">Your wishlist</p>
+    <div id="wishlist-mine"></div>
+
+    <p class="sub-label" id="wishlist-theirs-heading">Their wishlist</p>
+    <div id="wishlist-theirs"></div>
+
+    <div class="sheet-actions">
+      <button type="button" class="outline" id="close-wishlist">Close</button>
+      <button type="button" id="open-new-wishlist-item">New wishlist item</button>
+    </div>
+  </div>
+</div>
+
+<div id="new-wishlist-overlay" class="overlay hidden">
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="new-wishlist-title">
+    <h2 id="new-wishlist-title">New wishlist item</h2>
+    <p class="lead">What do you want, and how many coins should it cost?</p>
+    <form id="new-wishlist-form">
+      <p id="new-wishlist-error" class="error hidden"></p>
+
+      <label for="w-name">Item</label>
+      <input type="text" id="w-name" maxlength="80" required>
+
+      <label for="w-cost">Cost in coins</label>
+      <input type="number" id="w-cost" min="1" step="1" required>
+
+      <div class="sheet-actions">
+        <button type="button" class="outline" id="cancel-new-wishlist">Cancel</button>
+        <button type="submit" id="new-wishlist-submit">Add to wishlist</button>
+      </div>
+    </form>
   </div>
 </div>
 
@@ -1032,6 +1072,72 @@
     const { error } = await db.rpc("nudge_chore", { p_instance_id: id });
     if (error) throw error;
     toast("Nudge sent.");
+    await refresh();
+  }
+
+  /* ---------- wishlist ---------- */
+
+  function wishlistRow(item, mode) {
+    const row = document.createElement("div");
+    row.className = "shop-item";
+
+    const info = document.createElement("div");
+    info.className = "info";
+    const text = document.createElement("div");
+    text.innerHTML = "<p class='name'>" + escapeHtml(item.name) + "</p>" +
+                     "<p class='cost'>" + item.cost + " coins</p>";
+    info.appendChild(text);
+    row.appendChild(info);
+
+    if (mode === "mine") {
+      row.appendChild(actionButton("Remove", "outline", function () {
+        return removeWishlistItem(item.id);
+      }));
+    } else {
+      row.appendChild(actionButton("Grant", null, function () {
+        return grantWish(item.id);
+      }));
+    }
+
+    return row;
+  }
+
+  async function loadWishlist() {
+    const otherId = Object.keys(people).filter(function (id) { return id !== me.id; })[0];
+    $("wishlist-mine-heading").textContent = (people[me.id] || "Your") + "'s wishlist";
+    $("wishlist-theirs-heading").textContent = (people[otherId] || "Their") + "'s wishlist";
+
+    const { data, error } = await db
+      .from("wishlist_items")
+      .select("id, user_id, name, cost")
+      .is("granted_at", null)
+      .order("created_at");
+
+    if (error) {
+      toast(error.message);
+      return;
+    }
+
+    const items = data || [];
+    const mine = items.filter(function (i) { return i.user_id === me.id; });
+    const theirs = items.filter(function (i) { return i.user_id !== me.id; });
+
+    renderList($("wishlist-mine"), mine, function (i) { return wishlistRow(i, "mine"); }, "Nothing on your wishlist yet.");
+    renderList($("wishlist-theirs"), theirs, function (i) { return wishlistRow(i, "theirs"); }, "Nothing on their wishlist yet.");
+  }
+
+  async function removeWishlistItem(id) {
+    const { error } = await db.rpc("remove_wishlist_item", { p_item_id: id });
+    if (error) throw error;
+    toast("Removed.");
+    await loadWishlist();
+  }
+
+  async function grantWish(id) {
+    const { error } = await db.rpc("grant_wish", { p_item_id: id });
+    if (error) throw error;
+    toast("Wish granted!");
+    await loadWishlist();
     await refresh();
   }
 
@@ -1367,7 +1473,7 @@
   function openSheet(id) { $(id).classList.remove("hidden"); }
   function closeSheet(id) { $(id).classList.add("hidden"); }
 
-  const ALL_OVERLAYS = ["add-overlay", "log-overlay", "gift-overlay", "manage-overlay", "edit-chore-overlay", "cafe-overlay", "leaderboard-overlay"];
+  const ALL_OVERLAYS = ["add-overlay", "log-overlay", "gift-overlay", "manage-overlay", "edit-chore-overlay", "cafe-overlay", "leaderboard-overlay", "wishlist-overlay", "new-wishlist-overlay"];
 
   const CATEGORY_EMOJI = { cat: "🐱", furniture: "🪑", toy: "🧸", background: "🖼️", cafe_open: "☕" };
 
@@ -1417,6 +1523,48 @@
   });
 
   $("close-leaderboard").addEventListener("click", function () { closeSheet("leaderboard-overlay"); });
+
+  $("open-wishlist").addEventListener("click", async function () {
+    openSheet("wishlist-overlay");
+    await loadWishlist();
+  });
+
+  $("close-wishlist").addEventListener("click", function () { closeSheet("wishlist-overlay"); });
+
+  $("open-new-wishlist-item").addEventListener("click", function () {
+    $("new-wishlist-form").reset();
+    $("new-wishlist-error").classList.add("hidden");
+    openSheet("new-wishlist-overlay");
+    $("w-name").focus();
+  });
+
+  $("cancel-new-wishlist").addEventListener("click", function () { closeSheet("new-wishlist-overlay"); });
+
+  $("new-wishlist-form").addEventListener("submit", async function (event) {
+    event.preventDefault();
+    $("new-wishlist-error").classList.add("hidden");
+    $("new-wishlist-submit").disabled = true;
+    $("new-wishlist-submit").textContent = "Adding…";
+
+    const { error } = await db.rpc("create_wishlist_item", {
+      p_name: $("w-name").value,
+      p_cost: Number($("w-cost").value)
+    });
+
+    $("new-wishlist-submit").disabled = false;
+    $("new-wishlist-submit").textContent = "Add to wishlist";
+
+    if (error) {
+      $("new-wishlist-error").textContent = error.message || "Couldn't add that.";
+      $("new-wishlist-error").classList.remove("hidden");
+      return;
+    }
+
+    $("new-wishlist-form").reset();
+    closeSheet("new-wishlist-overlay");
+    toast("Added to your wishlist.");
+    await loadWishlist();
+  });
 
   $("open-manage").addEventListener("click", async function () {
     openSheet("manage-overlay");
