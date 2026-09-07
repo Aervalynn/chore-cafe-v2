@@ -349,6 +349,17 @@
 
   .sheet .lead { font-size: 14px; color: var(--muted); margin: 0 0 20px; }
 
+  .check-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 4px 0 16px;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--cocoa);
+  }
+  .check-row input { width: auto; margin: 0; }
+
   .days { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }
   .days input { position: absolute; opacity: 0; width: 0; height: 0; }
   .days label { margin: 0; }
@@ -568,6 +579,13 @@
         <option value="hard">Hard</option>
       </select>
 
+      <label for="c-assigned-to">Assign to</label>
+      <select id="c-assigned-to">
+        <option value="">Either of you</option>
+      </select>
+
+      <label class="check-row"><input type="checkbox" id="c-joint"><span>Split the coins between both of you when it's done</span></label>
+
       <label for="c-frequency">How often</label>
       <select id="c-frequency">
         <option value="one_time">One-time bounty</option>
@@ -681,6 +699,13 @@
         <option value="medium">Medium</option>
         <option value="hard">Hard</option>
       </select>
+
+      <label for="e-assigned-to">Assign to</label>
+      <select id="e-assigned-to">
+        <option value="">Either of you</option>
+      </select>
+
+      <label class="check-row"><input type="checkbox" id="e-joint"><span>Split the coins between both of you when it's done</span></label>
 
       <label for="e-frequency">How often</label>
       <select id="e-frequency">
@@ -972,10 +997,12 @@
     const freq = frequencyLabel(chore);
     if (freq) parts.push(escapeHtml(freq));
     parts.push(dueLabel(instance.due_date));
-    parts.push("<span class='coins'>" + payout(instance) + " coins</span>");
+    parts.push("<span class='coins'>" + payout(instance) + (chore.is_joint ? " coins (split)" : " coins") + "</span>");
 
     let html = "";
     if (instance.is_bounty) html += "<span class='tag'>Bounty</span>";
+    if (chore.is_joint) html += "<span class='tag'>Joint</span>";
+    if (chore.assigned_to) html += "<span class='tag'>Assigned</span>";
     html += "<p class='name'>" + escapeHtml(chore.name) + "</p>";
     html += "<p class='meta'>" + parts.join(" &middot; ") + "</p>";
     info.innerHTML = html;
@@ -1149,9 +1176,11 @@
 
     const info = document.createElement("div");
     info.className = "info";
-    const freq = frequencyLabel(chore) || "Anytime";
+    const metaParts = [frequencyLabel(chore) || "Anytime"];
+    if (chore.is_joint) metaParts.push("Joint");
+    if (chore.assigned_to) metaParts.push("Assigned to " + (people[chore.assigned_to] || "someone"));
     info.innerHTML = "<p class='name'>" + escapeHtml(chore.name) + "</p>" +
-                     "<p class='meta'>" + escapeHtml(freq) + "</p>";
+                     "<p class='meta'>" + metaParts.map(escapeHtml).join(" &middot; ") + "</p>";
     card.appendChild(info);
 
     const buttons = document.createElement("div");
@@ -1220,6 +1249,8 @@
     $("edit-chore-error").classList.add("hidden");
     $("e-name").value = chore.name;
     $("e-difficulty").value = chore.difficulty;
+    $("e-assigned-to").value = chore.assigned_to || "";
+    $("e-joint").checked = !!chore.is_joint;
     $("e-frequency").value = chore.frequency;
     const days = chore.active_days || [];
     $("edit-days").querySelectorAll("input").forEach(function (box) {
@@ -1517,6 +1548,17 @@
   $("c-frequency").addEventListener("change", syncFormBlocks);
   $("e-frequency").addEventListener("change", syncEditFormBlocks);
 
+  function wireAssignJointExclusivity(selectId, checkboxId) {
+    $(selectId).addEventListener("change", function () {
+      if ($(selectId).value) $(checkboxId).checked = false;
+    });
+    $(checkboxId).addEventListener("change", function () {
+      if ($(checkboxId).checked) $(selectId).value = "";
+    });
+  }
+  wireAssignJointExclusivity("c-assigned-to", "c-joint");
+  wireAssignJointExclusivity("e-assigned-to", "e-joint");
+
   $("open-leaderboard").addEventListener("click", async function () {
     openSheet("leaderboard-overlay");
     await loadLeaderboard();
@@ -1624,7 +1666,9 @@
       p_difficulty: $("c-difficulty").value,
       p_frequency: frequency,
       p_active_days: days,
-      p_due_date: frequency === "on_demand" ? null : $("c-due").value
+      p_due_date: frequency === "on_demand" ? null : $("c-due").value,
+      p_assigned_to: $("c-assigned-to").value || null,
+      p_is_joint: $("c-joint").checked
     });
 
     $("add-submit").disabled = false;
@@ -1714,7 +1758,9 @@
       p_name: $("e-name").value,
       p_difficulty: $("e-difficulty").value,
       p_frequency: frequency,
-      p_active_days: days
+      p_active_days: days,
+      p_assigned_to: $("e-assigned-to").value || null,
+      p_is_joint: $("e-joint").checked
     });
 
     $("edit-chore-submit").disabled = false;
@@ -1755,6 +1801,22 @@
     $("theirs-heading").textContent = otherName ? otherName + "'s" : "Theirs";
 
     renderAvatar();
+    populateAssignToSelects();
+  }
+
+  function populateAssignToSelects() {
+    ["c-assigned-to", "e-assigned-to"].forEach(function (selectId) {
+      const select = $(selectId);
+      const current = select.value;
+      select.innerHTML = "<option value=''>Either of you</option>";
+      Object.keys(people).forEach(function (id) {
+        const opt = document.createElement("option");
+        opt.value = id;
+        opt.textContent = people[id];
+        select.appendChild(opt);
+      });
+      select.value = current;
+    });
   }
 
   function renderAvatar() {
@@ -1902,20 +1964,25 @@
     const rows = instances || [];
 
     const mine = rows.filter(function (r) {
-      return r.status === "accepted" && r.accepted_by === me.id;
+      return r.status === "accepted" &&
+        (r.accepted_by === me.id || (r.chores && r.chores.is_joint));
     });
     const pool = rows.filter(function (r) { return r.status === "pool"; });
     const theirs = rows.filter(function (r) {
-      return r.status === "accepted" && r.accepted_by !== me.id;
+      return r.status === "accepted" && r.accepted_by !== me.id &&
+        !(r.chores && r.chores.is_joint);
     });
 
     renderList($("mine"), mine, function (inst) {
       const card = choreCard(inst);
       const buttons = document.createElement("div");
       buttons.className = "buttons";
-      buttons.appendChild(actionButton("Release", "outline", function () {
-        return releaseChore(inst.id);
-      }));
+      const locked = inst.chores && (inst.chores.is_joint || inst.chores.assigned_to);
+      if (!locked) {
+        buttons.appendChild(actionButton("Release", "outline", function () {
+          return releaseChore(inst.id);
+        }));
+      }
       buttons.appendChild(actionButton("Done", null, function () {
         return completeChore(inst.id);
       }));
