@@ -766,6 +766,16 @@
   </div>
 </div>
 
+<div id="overdue-overlay" class="overlay hidden">
+  <div class="sheet celebrate-sheet" role="dialog" aria-modal="true" aria-labelledby="overdue-message">
+    <div id="overdue-media"></div>
+    <p id="overdue-message" class="celebrate-message"></p>
+    <div class="sheet-actions">
+      <button type="button" id="close-overdue">Got it</button>
+    </div>
+  </div>
+</div>
+
 <div id="wishlist-overlay" class="overlay hidden">
   <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="wishlist-title">
     <h2 id="wishlist-title">Wishlist</h2>
@@ -1168,8 +1178,54 @@
     $("celebrate-message").textContent = text;
 
     openSheet("celebrate-overlay");
-   // if (celebrateTimer) clearTimeout(celebrateTimer);
-   // celebrateTimer = setTimeout(function () { closeSheet("celebrate-overlay"); }, 4000);
+    // if (celebrateTimer) clearTimeout(celebrateTimer);
+    // celebrateTimer = setTimeout(function () { closeSheet("celebrate-overlay"); }, 4000);
+  }
+
+  // Once-a-day "here's what's overdue" popup. checkOverduePopup() (server
+  // side) only returns show_popup: true the first time it's called for a
+  // given person on a given day, so calling this every time the app loads
+  // is fine -- most days it'll just quietly do nothing.
+  async function maybeShowOverduePopup() {
+    const { data, error } = await db.rpc("check_overdue_popup");
+    if (error || !data || !data.length) return;
+    const row = data[0];
+    if (!row.show_popup) return;
+    await showOverduePopup(row.overdue_count);
+  }
+
+  async function showOverduePopup(count) {
+    const media = $("overdue-media");
+    media.innerHTML = "";
+
+    const [{ data: gifRows }, { data: msgRows }] = await Promise.all([
+      db.from("overdue_gifs").select("filename").eq("active", true),
+      db.from("notification_messages").select("message").eq("kind", "overdue_summary").eq("active", true)
+    ]);
+
+    const gifs = gifRows || [];
+    const pick = gifs.length ? gifs[Math.floor(Math.random() * gifs.length)] : null;
+    if (pick) {
+      const img = document.createElement("img");
+      img.className = "celebrate-gif";
+      img.src = "overdue/" + pick.filename;
+      img.alt = "";
+      img.onerror = function () {
+        media.innerHTML = "<div class='celebrate-emoji'>⏰</div>";
+      };
+      media.appendChild(img);
+    } else {
+      media.innerHTML = "<div class='celebrate-emoji'>⏰</div>";
+    }
+
+    const msgs = msgRows || [];
+    let text = msgs.length > 0
+      ? msgs[Math.floor(Math.random() * msgs.length)].message
+      : "There are {count} overdue tasks on the board.";
+    text = text.split("{count}").join(count);
+    $("overdue-message").textContent = text;
+
+    openSheet("overdue-overlay");
   }
 
   async function nudgeChore(id) {
@@ -1581,7 +1637,7 @@
   function openSheet(id) { $(id).classList.remove("hidden"); }
   function closeSheet(id) { $(id).classList.add("hidden"); }
 
-  const ALL_OVERLAYS = ["add-overlay", "log-overlay", "gift-overlay", "manage-overlay", "edit-chore-overlay", "cafe-overlay", "leaderboard-overlay", "wishlist-overlay", "new-wishlist-overlay", "celebrate-overlay"];
+  const ALL_OVERLAYS = ["add-overlay", "log-overlay", "gift-overlay", "manage-overlay", "edit-chore-overlay", "cafe-overlay", "leaderboard-overlay", "wishlist-overlay", "new-wishlist-overlay", "celebrate-overlay", "overdue-overlay"];
 
   const CATEGORY_EMOJI = { cat: "🐱", furniture: "🪑", toy: "🧸", background: "🖼️", cafe_open: "☕" };
 
@@ -1644,9 +1700,11 @@
   $("close-leaderboard").addEventListener("click", function () { closeSheet("leaderboard-overlay"); });
 
   $("close-celebrate").addEventListener("click", function () {
-    if (celebrateTimer) clearTimeout(celebrateTimer);
+    // if (celebrateTimer) clearTimeout(celebrateTimer);
     closeSheet("celebrate-overlay");
   });
+
+  $("close-overdue").addEventListener("click", function () { closeSheet("overdue-overlay"); });
 
   $("open-wishlist").addEventListener("click", async function () {
     openSheet("wishlist-overlay");
@@ -2136,6 +2194,7 @@
     await db.rpc("generate_due_chores");
     await refresh();
     watchForChanges();
+    maybeShowOverduePopup();
     withOneSignal(async function (OneSignal) {
       try {
         await OneSignal.login(user.id);
