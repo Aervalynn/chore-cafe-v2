@@ -1129,13 +1129,24 @@
     return pool[Math.floor(Math.random() * pool.length)];
   }
 
+  // Same idea as pickCelebrationGif: a joint completion prefers a
+  // "completed_joint" line if you've added one, and falls back to the
+  // regular "completed" pool if you haven't gotten around to it yet.
+  function pickCelebrationMessage(msgs, isJoint) {
+    const joint = msgs.filter(function (m) { return m.kind === "completed_joint"; });
+    const generic = msgs.filter(function (m) { return m.kind === "completed"; });
+    const pool = isJoint && joint.length ? joint : generic;
+    if (!pool.length) return null;
+    return pool[Math.floor(Math.random() * pool.length)].message;
+  }
+
   async function celebrate(choreName, isJoint) {
     const media = $("celebrate-media");
     media.innerHTML = "";
 
     const [{ data: gifRows }, { data: msgRows }] = await Promise.all([
       db.from("celebration_gifs").select("filename, user_id, for_joint").eq("active", true),
-      db.from("notification_messages").select("message").eq("kind", "completed").eq("active", true)
+      db.from("notification_messages").select("message, kind").in("kind", ["completed", "completed_joint"]).eq("active", true)
     ]);
 
     const pick = pickCelebrationGif(gifRows || [], isJoint);
@@ -1152,16 +1163,13 @@
       media.innerHTML = "<div class='celebrate-emoji'>🎉</div>";
     }
 
-    const msgs = msgRows || [];
-    let text = msgs.length > 0
-      ? msgs[Math.floor(Math.random() * msgs.length)].message
-      : "{chore} is done! Nice work, {name}.";
+    let text = pickCelebrationMessage(msgRows || [], isJoint) || "{chore} is done! Nice work, {name}.";
     text = text.split("{chore}").join(choreName || "That").split("{name}").join(people[me.id] || "you");
     $("celebrate-message").textContent = text;
 
     openSheet("celebrate-overlay");
-   // if (celebrateTimer) clearTimeout(celebrateTimer);
-   // celebrateTimer = setTimeout(function () { closeSheet("celebrate-overlay"); }, 4000);
+    if (celebrateTimer) clearTimeout(celebrateTimer);
+    celebrateTimer = setTimeout(function () { closeSheet("celebrate-overlay"); }, 4000);
   }
 
   async function nudgeChore(id) {
