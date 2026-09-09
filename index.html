@@ -771,6 +771,16 @@
   </div>
 </div>
 
+<div id="steps-celebrate-overlay" class="overlay hidden">
+  <div class="sheet celebrate-sheet" role="dialog" aria-modal="true" aria-labelledby="steps-celebrate-message">
+    <div id="steps-celebrate-media"></div>
+    <p id="steps-celebrate-message" class="celebrate-message"></p>
+    <div class="sheet-actions">
+      <button type="button" id="close-steps-celebrate">Nice!</button>
+    </div>
+  </div>
+</div>
+
 <div id="overdue-overlay" class="overlay hidden">
   <div class="sheet celebrate-sheet" role="dialog" aria-modal="true" aria-labelledby="overdue-message">
     <div id="overdue-media"></div>
@@ -1317,6 +1327,51 @@
     openSheet("overdue-overlay");
   }
 
+  // Same "specific pool, fall back to generic" idea as the chore
+  // celebration gifs -- a gif can be pinned to hitting your goal, to
+  // falling short, or left generic (met_goal null) to cover either.
+  async function celebrateSteps(steps, goal, coins) {
+    const media = $("steps-celebrate-media");
+    media.innerHTML = "";
+
+    const metGoal = steps >= goal;
+
+    const [{ data: gifRows }, { data: msgRows }] = await Promise.all([
+      db.from("step_gifs").select("filename, met_goal").eq("active", true),
+      db.from("notification_messages").select("message").eq("kind", "steps_logged").eq("active", true)
+    ]);
+
+    const gifs = gifRows || [];
+    const forOutcome = gifs.filter(function (g) { return g.met_goal === metGoal; });
+    const generic = gifs.filter(function (g) { return g.met_goal === null; });
+    const pool = forOutcome.length ? forOutcome : generic;
+    const pick = pool.length ? pool[Math.floor(Math.random() * pool.length)] : null;
+
+    if (pick) {
+      const img = document.createElement("img");
+      img.className = "celebrate-gif";
+      img.src = "steps/" + pick.filename;
+      img.alt = "";
+      img.onerror = function () {
+        media.innerHTML = "<div class='celebrate-emoji'>👟</div>";
+      };
+      media.appendChild(img);
+    } else {
+      media.innerHTML = "<div class='celebrate-emoji'>👟</div>";
+    }
+
+    const msgs = msgRows || [];
+    let text = msgs.length > 0
+      ? msgs[Math.floor(Math.random() * msgs.length)].message
+      : "Logged {steps} steps — +{coins} coins!";
+    text = text.split("{steps}").join(steps.toLocaleString())
+               .split("{goal}").join(goal.toLocaleString())
+               .split("{coins}").join(coins);
+    $("steps-celebrate-message").textContent = text;
+
+    openSheet("steps-celebrate-overlay");
+  }
+
   async function nudgeChore(id) {
     const { error } = await db.rpc("nudge_chore", { p_instance_id: id });
     if (error) throw error;
@@ -1726,7 +1781,7 @@
   function openSheet(id) { $(id).classList.remove("hidden"); }
   function closeSheet(id) { $(id).classList.add("hidden"); }
 
-  const ALL_OVERLAYS = ["add-overlay", "log-overlay", "gift-overlay", "manage-overlay", "edit-chore-overlay", "cafe-overlay", "leaderboard-overlay", "wishlist-overlay", "new-wishlist-overlay", "celebrate-overlay", "overdue-overlay", "solo-team-overlay", "steps-overlay"];
+  const ALL_OVERLAYS = ["add-overlay", "log-overlay", "gift-overlay", "manage-overlay", "edit-chore-overlay", "cafe-overlay", "leaderboard-overlay", "wishlist-overlay", "new-wishlist-overlay", "celebrate-overlay", "overdue-overlay", "solo-team-overlay", "steps-overlay", "steps-celebrate-overlay"];
 
   const CATEGORY_EMOJI = { cat: "🐱", furniture: "🪑", toy: "🧸", background: "🖼️", cafe_open: "☕" };
 
@@ -1805,6 +1860,7 @@
   });
 
   $("close-overdue").addEventListener("click", function () { closeSheet("overdue-overlay"); });
+  $("close-steps-celebrate").addEventListener("click", function () { closeSheet("steps-celebrate-overlay"); });
 
   $("pick-solo").addEventListener("click", function () { resolveSoloTeam(false, $("pick-solo")); });
   $("pick-team").addEventListener("click", function () { resolveSoloTeam(true, $("pick-team")); });
@@ -1959,8 +2015,9 @@
     $("steps-submit").disabled = true;
     $("steps-submit").textContent = "Logging…";
 
-    const { data, error } = await db.rpc("log_steps", {
-      p_steps: parseInt($("s-steps").value, 10)
+    const stepsEntered = parseInt($("s-steps").value, 10);
+    const { data: coinsAwarded, error } = await db.rpc("log_steps", {
+      p_steps: stepsEntered
     });
 
     $("steps-submit").disabled = false;
@@ -1973,8 +2030,8 @@
     }
 
     closeSheet("steps-overlay");
-    toast("+" + data + " coins logged.");
     $("steps-notice").classList.add("hidden");
+    await celebrateSteps(stepsEntered, stepGoal || stepsEntered, coinsAwarded);
     await refresh();
   });
 
