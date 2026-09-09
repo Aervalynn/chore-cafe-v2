@@ -547,6 +547,11 @@
     <button type="button" class="outline" id="open-log">Log something</button>
   </div>
 
+  <div id="steps-notice" class="notice hidden">
+    <p id="steps-notice-text">Log tonight's steps to earn coins.</p>
+    <button type="button" class="small" id="open-steps">Log steps</button>
+  </div>
+
   <h2>Yours</h2>
   <div id="mine"></div>
 
@@ -590,7 +595,7 @@
         <option value="">Either of you</option>
       </select>
 
-      <label class="check-row"><input type="checkbox" id="c-joint"><span>Split the coins between both of you when it's done</span></label>
+      <label class="check-row"><input type="checkbox" id="c-joint"><span>Can be done together (you'll be asked to choose when it's finished)</span></label>
 
       <label for="c-frequency">How often</label>
       <select id="c-frequency">
@@ -711,7 +716,7 @@
         <option value="">Either of you</option>
       </select>
 
-      <label class="check-row"><input type="checkbox" id="e-joint"><span>Split the coins between both of you when it's done</span></label>
+      <label class="check-row"><input type="checkbox" id="e-joint"><span>Can be done together (you'll be asked to choose when it's finished)</span></label>
 
       <label for="e-frequency">How often</label>
       <select id="e-frequency">
@@ -773,6 +778,34 @@
     <div class="sheet-actions">
       <button type="button" id="close-overdue">Got it</button>
     </div>
+  </div>
+</div>
+
+<div id="solo-team-overlay" class="overlay hidden">
+  <div class="sheet celebrate-sheet" role="dialog" aria-modal="true" aria-labelledby="solo-team-message">
+    <p id="solo-team-message" class="celebrate-message"></p>
+    <div class="sheet-actions">
+      <button type="button" class="outline" id="pick-solo">Just me</button>
+      <button type="button" id="pick-team">Both of us</button>
+    </div>
+  </div>
+</div>
+
+<div id="steps-overlay" class="overlay hidden">
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="steps-title">
+    <h2 id="steps-title">Log your steps</h2>
+    <p class="lead" id="steps-lead"></p>
+    <form id="steps-form">
+      <p id="steps-error" class="error hidden"></p>
+
+      <label for="s-steps">Step count</label>
+      <input type="number" id="s-steps" min="0" step="1" inputmode="numeric" required>
+
+      <div class="sheet-actions">
+        <button type="button" class="outline" id="cancel-steps">Cancel</button>
+        <button type="submit" id="steps-submit">Log it</button>
+      </div>
+    </form>
   </div>
 </div>
 
@@ -846,6 +879,8 @@
   let giftTarget = null;
   let boardChannel = null;
   let refreshTimer = null;
+  let stepGoal = null;
+  let stepsCheckTimer = null;
 
   const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -950,6 +985,14 @@
     return Math.round((today - parseDate(dueText)) / 86400000);
   }
 
+  // Keeps a locked-in chore (assigned or joint) out of "Yours" until it's
+  // actually coming up -- no due date (on-demand) always counts as coming
+  // up, since there's nothing far-out to hide.
+  function withinMineWindow(dueText) {
+    if (!dueText) return true;
+    return daysLate(dueText) >= -7;
+  }
+
   function dueLabel(dueText) {
     if (!dueText) return "Whenever it needs doing";
     const late = daysLate(dueText);
@@ -1023,11 +1066,11 @@
     const freq = frequencyLabel(chore);
     if (freq) parts.push(escapeHtml(freq));
     parts.push(dueLabel(instance.due_date));
-    parts.push("<span class='coins'>" + payout(instance) + (chore.is_joint ? " coins (split)" : " coins") + "</span>");
+    parts.push("<span class='coins'>" + payout(instance) + (chore.is_joint ? " coins (split if done together)" : " coins") + "</span>");
 
     let html = "";
     if (instance.is_bounty) html += "<span class='tag'>Bounty</span>";
-    if (chore.is_joint) html += "<span class='tag'>Joint</span>";
+    if (chore.is_joint) html += "<span class='tag'>Together?</span>";
     if (chore.assigned_to) html += "<span class='tag'>Assigned</span>";
     html += "<p class='name'>" + escapeHtml(chore.name) + "</p>";
     html += "<p class='meta'>" + parts.join(" &middot; ") + "</p>";
@@ -1114,11 +1157,40 @@
     await refresh();
   }
 
-  async function completeChore(id, choreName, isJoint) {
-    const { error } = await db.rpc("complete_chore", { instance_id: id });
+  // isJoint here means "treat this completion as a team one" -- for a
+  // chore marked "can be done together," that's a per-completion choice
+  // (see pendingCompletion below), not a fixed property of the chore.
+  async function completeChore(id, choreName, isJoint, solo) {
+    const { error } = await db.rpc("complete_chore", { instance_id: id, p_solo: !!solo });
     if (error) throw error;
     await celebrate(choreName, isJoint);
     await refresh();
+  }
+
+  // "Can be done together" chores don't auto-split every time -- tapping
+  // Done on one asks whether this particular time was solo or a team
+  // effort, and pays out (and celebrates) accordingly.
+  let pendingCompletion = null;
+
+  function openSoloTeamPrompt(id, choreName) {
+    pendingCompletion = { id: id, choreName: choreName };
+    $("solo-team-message").textContent = "How was \"" + choreName + "\" done?";
+    openSheet("solo-team-overlay");
+  }
+
+  async function resolveSoloTeam(isTeam, btn) {
+    if (!pendingCompletion) return;
+    const completion = pendingCompletion;
+    btn.disabled = true;
+    try {
+      await completeChore(completion.id, completion.choreName, isTeam, !isTeam);
+      pendingCompletion = null;
+      closeSheet("solo-team-overlay");
+    } catch (err) {
+      toast(err.message || "Something went wrong.");
+    } finally {
+      btn.disabled = false;
+    }
   }
 
   let celebrateTimer = null;
@@ -1186,6 +1258,23 @@
   // side) only returns show_popup: true the first time it's called for a
   // given person on a given day, so calling this every time the app loads
   // is fine -- most days it'll just quietly do nothing.
+  // The steps banner needs to appear/disappear on its own while the app
+  // sits open (9pm to 5am, or the moment you log), not just on the next
+  // reload -- so this runs once at startup and then every few minutes.
+  async function checkStepPrompt() {
+    const { data, error } = await db.rpc("check_step_prompt");
+    if (error || !data || !data.length) return;
+    const row = data[0];
+    stepGoal = row.step_goal;
+    if (row.show_prompt) {
+      $("steps-notice-text").textContent =
+        "Log tonight's steps for a shot at " + (settings.coins_steps || 100) + " coins.";
+      $("steps-notice").classList.remove("hidden");
+    } else {
+      $("steps-notice").classList.add("hidden");
+    }
+  }
+
   async function maybeShowOverduePopup() {
     const { data, error } = await db.rpc("check_overdue_popup");
     if (error || !data || !data.length) return;
@@ -1310,7 +1399,7 @@
     const info = document.createElement("div");
     info.className = "info";
     const metaParts = [frequencyLabel(chore) || "Anytime"];
-    if (chore.is_joint) metaParts.push("Joint");
+    if (chore.is_joint) metaParts.push("Can be done together");
     if (chore.assigned_to) metaParts.push("Assigned to " + (people[chore.assigned_to] || "someone"));
     info.innerHTML = "<p class='name'>" + escapeHtml(chore.name) + "</p>" +
                      "<p class='meta'>" + metaParts.map(escapeHtml).join(" &middot; ") + "</p>";
@@ -1637,7 +1726,7 @@
   function openSheet(id) { $(id).classList.remove("hidden"); }
   function closeSheet(id) { $(id).classList.add("hidden"); }
 
-  const ALL_OVERLAYS = ["add-overlay", "log-overlay", "gift-overlay", "manage-overlay", "edit-chore-overlay", "cafe-overlay", "leaderboard-overlay", "wishlist-overlay", "new-wishlist-overlay", "celebrate-overlay", "overdue-overlay"];
+  const ALL_OVERLAYS = ["add-overlay", "log-overlay", "gift-overlay", "manage-overlay", "edit-chore-overlay", "cafe-overlay", "leaderboard-overlay", "wishlist-overlay", "new-wishlist-overlay", "celebrate-overlay", "overdue-overlay", "solo-team-overlay", "steps-overlay"];
 
   const CATEGORY_EMOJI = { cat: "🐱", furniture: "🪑", toy: "🧸", background: "🖼️", cafe_open: "☕" };
 
@@ -1674,8 +1763,19 @@
     $("l-name").focus();
   });
 
+  $("open-steps").addEventListener("click", function () {
+    $("steps-form").reset();
+    $("steps-error").classList.add("hidden");
+    $("steps-lead").textContent = stepGoal
+      ? "Goal: " + stepGoal.toLocaleString() + " steps for a full " + (settings.coins_steps || 100) + " coins."
+      : "";
+    openSheet("steps-overlay");
+    $("s-steps").focus();
+  });
+
   $("cancel-add").addEventListener("click", function () { closeSheet("add-overlay"); });
   $("cancel-log").addEventListener("click", function () { closeSheet("log-overlay"); });
+  $("cancel-steps").addEventListener("click", function () { closeSheet("steps-overlay"); });
   $("cancel-gift").addEventListener("click", function () { closeSheet("gift-overlay"); });
   $("cancel-edit-chore").addEventListener("click", function () { closeSheet("edit-chore-overlay"); });
   $("c-frequency").addEventListener("change", syncFormBlocks);
@@ -1705,6 +1805,9 @@
   });
 
   $("close-overdue").addEventListener("click", function () { closeSheet("overdue-overlay"); });
+
+  $("pick-solo").addEventListener("click", function () { resolveSoloTeam(false, $("pick-solo")); });
+  $("pick-team").addEventListener("click", function () { resolveSoloTeam(true, $("pick-team")); });
 
   $("open-wishlist").addEventListener("click", async function () {
     openSheet("wishlist-overlay");
@@ -1847,6 +1950,31 @@
 
     closeSheet("log-overlay");
     toast("Logged.");
+    await refresh();
+  });
+
+  $("steps-form").addEventListener("submit", async function (event) {
+    event.preventDefault();
+    $("steps-error").classList.add("hidden");
+    $("steps-submit").disabled = true;
+    $("steps-submit").textContent = "Logging…";
+
+    const { data, error } = await db.rpc("log_steps", {
+      p_steps: parseInt($("s-steps").value, 10)
+    });
+
+    $("steps-submit").disabled = false;
+    $("steps-submit").textContent = "Log it";
+
+    if (error) {
+      $("steps-error").textContent = error.message || "Couldn't log that.";
+      $("steps-error").classList.remove("hidden");
+      return;
+    }
+
+    closeSheet("steps-overlay");
+    toast("+" + data + " coins logged.");
+    $("steps-notice").classList.add("hidden");
     await refresh();
   });
 
@@ -2046,6 +2174,8 @@
                ": “" + row.reason + "”";
       } else if (row.kind === "spend") {
         text = nameOf(row.user_id) + " " + row.reason.charAt(0).toLowerCase() + row.reason.slice(1);
+      } else if (row.kind === "steps") {
+        text = nameOf(row.user_id) + " " + row.reason;
       } else {
         text = nameOf(row.user_id) + " did " + row.reason;
       }
@@ -2105,7 +2235,8 @@
 
     const mine = rows.filter(function (r) {
       return r.status === "accepted" &&
-        (r.accepted_by === me.id || (r.chores && r.chores.is_joint));
+        (r.accepted_by === me.id || (r.chores && r.chores.is_joint)) &&
+        withinMineWindow(r.due_date);
     });
     const pool = rows.filter(function (r) { return r.status === "pool"; });
     const theirs = rows.filter(function (r) {
@@ -2123,9 +2254,15 @@
           return releaseChore(inst.id);
         }));
       }
-      buttons.appendChild(actionButton("Done", null, function () {
-        return completeChore(inst.id, inst.chores.name, inst.chores.is_joint);
-      }));
+      if (inst.chores && inst.chores.is_joint) {
+        buttons.appendChild(plainButton("Done", null, function () {
+          openSoloTeamPrompt(inst.id, inst.chores.name);
+        }));
+      } else {
+        buttons.appendChild(actionButton("Done", null, function () {
+          return completeChore(inst.id, inst.chores.name, false);
+        }));
+      }
       card.appendChild(buttons);
       return card;
     }, "Nothing on your tray.");
@@ -2195,6 +2332,9 @@
     await refresh();
     watchForChanges();
     maybeShowOverduePopup();
+    checkStepPrompt();
+    if (stepsCheckTimer) clearInterval(stepsCheckTimer);
+    stepsCheckTimer = setInterval(checkStepPrompt, 5 * 60 * 1000);
     withOneSignal(async function (OneSignal) {
       try {
         await OneSignal.login(user.id);
@@ -2234,6 +2374,10 @@
     if (boardChannel) {
       db.removeChannel(boardChannel);
       boardChannel = null;
+    }
+    if (stepsCheckTimer) {
+      clearInterval(stepsCheckTimer);
+      stepsCheckTimer = null;
     }
     withOneSignal(async function (OneSignal) {
       try { await OneSignal.logout(); } catch (err) { /* ignore */ }
