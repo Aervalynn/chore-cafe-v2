@@ -388,6 +388,9 @@
   .sheet-actions { display: flex; gap: 10px; margin-top: 4px; }
   .sheet-actions button { flex: 1; padding: 13px; }
 
+  .quick-amounts { display: flex; gap: 8px; margin: 4px 0 10px; }
+  .quick-amounts button { flex: 1; padding: 10px; }
+
   .sheet .sub-label {
     font-size: 12px;
     font-weight: 600;
@@ -526,7 +529,7 @@
     </div>
     <div class="jar">
       <div class="jar-row">
-        <button type="button" class="leaderboard-icon-btn" id="open-wishlist" aria-label="Wishlist" title="Wishlist">⭐</button>
+        <button type="button" class="leaderboard-icon-btn" id="open-spend" aria-label="Spend Coins" title="Spend Coins">💰</button>
         <button type="button" class="leaderboard-icon-btn" id="open-leaderboard" aria-label="Leaderboard" title="Leaderboard">🏆</button>
         <span id="avatar-slot"></span>
         <span>
@@ -819,42 +822,54 @@
   </div>
 </div>
 
-<div id="wishlist-overlay" class="overlay hidden">
-  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="wishlist-title">
-    <h2 id="wishlist-title">Wishlist</h2>
-    <p class="lead">Save up for something you want &mdash; your partner can grant it once they're ready.</p>
+<div id="spend-overlay" class="overlay hidden">
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="spend-title">
+    <h2 id="spend-title">Spend Coins</h2>
+    <p class="lead">Use your own coins on whatever you'd like &mdash; no approval needed.</p>
 
-    <p class="sub-label" id="wishlist-mine-heading">Your wishlist</p>
-    <div id="wishlist-mine"></div>
-
-    <p class="sub-label" id="wishlist-theirs-heading">Their wishlist</p>
-    <div id="wishlist-theirs"></div>
+    <p class="sub-label">Last 10 spends</p>
+    <div id="spend-history"></div>
 
     <div class="sheet-actions">
-      <button type="button" class="outline" id="close-wishlist">Close</button>
-      <button type="button" id="open-new-wishlist-item">New wishlist item</button>
+      <button type="button" class="outline" id="close-spend">Close</button>
+      <button type="button" id="open-new-spend">Spend coins</button>
     </div>
   </div>
 </div>
 
-<div id="new-wishlist-overlay" class="overlay hidden">
-  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="new-wishlist-title">
-    <h2 id="new-wishlist-title">New wishlist item</h2>
-    <p class="lead">What do you want, and how many coins should it cost?</p>
-    <form id="new-wishlist-form">
-      <p id="new-wishlist-error" class="error hidden"></p>
+<div id="new-spend-overlay" class="overlay hidden">
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="new-spend-title">
+    <h2 id="new-spend-title">Spend coins</h2>
+    <form id="new-spend-form">
+      <p id="new-spend-error" class="error hidden"></p>
 
-      <label for="w-name">Item</label>
-      <input type="text" id="w-name" maxlength="80" required>
+      <label for="sp-item">What are you spending on?</label>
+      <input type="text" id="sp-item" maxlength="80" required>
 
-      <label for="w-cost">Cost in coins</label>
-      <input type="number" id="w-cost" min="1" step="1" required>
+      <label for="sp-amount">Amount in coins</label>
+      <div class="quick-amounts">
+        <button type="button" class="small outline" data-amount="10">10</button>
+        <button type="button" class="small outline" data-amount="25">25</button>
+        <button type="button" class="small outline" data-amount="100">100</button>
+      </div>
+      <input type="number" id="sp-amount" min="1" step="1" required>
 
       <div class="sheet-actions">
-        <button type="button" class="outline" id="cancel-new-wishlist">Cancel</button>
-        <button type="submit" id="new-wishlist-submit">Add to wishlist</button>
+        <button type="button" class="outline" id="cancel-new-spend">Cancel</button>
+        <button type="submit" id="new-spend-submit">Continue</button>
       </div>
     </form>
+  </div>
+</div>
+
+<div id="confirm-spend-overlay" class="overlay hidden">
+  <div class="sheet celebrate-sheet" role="dialog" aria-modal="true" aria-labelledby="confirm-spend-message">
+    <p id="confirm-spend-message" class="celebrate-message"></p>
+    <p id="confirm-spend-error" class="error hidden"></p>
+    <div class="sheet-actions">
+      <button type="button" class="outline" id="cancel-confirm-spend">Cancel</button>
+      <button type="button" id="confirm-spend-submit">Confirm</button>
+    </div>
   </div>
 </div>
 
@@ -1379,70 +1394,44 @@
     await refresh();
   }
 
-  /* ---------- wishlist ---------- */
+  /* ---------- spend coins ---------- */
 
-  function wishlistRow(item, mode) {
-    const row = document.createElement("div");
-    row.className = "shop-item";
+  // Holds the item/amount picked in new-spend-overlay while the
+  // confirm step is showing, so confirm-spend-submit knows what to
+  // actually charge.
+  let pendingSpend = null;
 
-    const info = document.createElement("div");
-    info.className = "info";
-    const text = document.createElement("div");
-    text.innerHTML = "<p class='name'>" + escapeHtml(item.name) + "</p>" +
-                     "<p class='cost'>" + item.cost + " coins</p>";
-    info.appendChild(text);
-    row.appendChild(info);
+  function spendHistoryRow(row) {
+    const entry = document.createElement("div");
+    entry.className = "entry";
 
-    if (mode === "mine") {
-      row.appendChild(actionButton("Remove", "outline", function () {
-        return removeWishlistItem(item.id);
-      }));
-    } else {
-      row.appendChild(actionButton("Grant", null, function () {
-        return grantWish(item.id);
-      }));
-    }
+    const left = document.createElement("div");
+    left.innerHTML = "<p class='what'>" + escapeHtml(nameOf(row.user_id) + " spent " + Math.abs(row.amount) + " coins on " + row.reason) + "</p>" +
+                     "<p class='when'>" + agoLabel(row.created_at) + "</p>";
 
-    return row;
+    const amount = document.createElement("span");
+    amount.className = "amount";
+    amount.textContent = row.amount;
+
+    entry.appendChild(left);
+    entry.appendChild(amount);
+    return entry;
   }
 
-  async function loadWishlist() {
-    const otherId = Object.keys(people).filter(function (id) { return id !== me.id; })[0];
-    $("wishlist-mine-heading").textContent = (people[me.id] || "Your") + "'s wishlist";
-    $("wishlist-theirs-heading").textContent = (people[otherId] || "Their") + "'s wishlist";
-
+  async function loadSpendHistory() {
     const { data, error } = await db
-      .from("wishlist_items")
-      .select("id, user_id, name, cost")
-      .is("granted_at", null)
-      .order("created_at");
+      .from("coin_transactions")
+      .select("user_id, amount, reason, created_at")
+      .eq("kind", "spend")
+      .order("created_at", { ascending: false })
+      .limit(10);
 
     if (error) {
       toast(error.message);
       return;
     }
 
-    const items = data || [];
-    const mine = items.filter(function (i) { return i.user_id === me.id; });
-    const theirs = items.filter(function (i) { return i.user_id !== me.id; });
-
-    renderList($("wishlist-mine"), mine, function (i) { return wishlistRow(i, "mine"); }, "Nothing on your wishlist yet.");
-    renderList($("wishlist-theirs"), theirs, function (i) { return wishlistRow(i, "theirs"); }, "Nothing on their wishlist yet.");
-  }
-
-  async function removeWishlistItem(id) {
-    const { error } = await db.rpc("remove_wishlist_item", { p_item_id: id });
-    if (error) throw error;
-    toast("Removed.");
-    await loadWishlist();
-  }
-
-  async function grantWish(id) {
-    const { error } = await db.rpc("grant_wish", { p_item_id: id });
-    if (error) throw error;
-    toast("Wish granted!");
-    await loadWishlist();
-    await refresh();
+    renderList($("spend-history"), data || [], spendHistoryRow, "No spends logged yet.");
   }
 
   /* ---------- manage chores ---------- */
@@ -1781,7 +1770,7 @@
   function openSheet(id) { $(id).classList.remove("hidden"); }
   function closeSheet(id) { $(id).classList.add("hidden"); }
 
-  const ALL_OVERLAYS = ["add-overlay", "log-overlay", "gift-overlay", "manage-overlay", "edit-chore-overlay", "cafe-overlay", "leaderboard-overlay", "wishlist-overlay", "new-wishlist-overlay", "celebrate-overlay", "overdue-overlay", "solo-team-overlay", "steps-overlay", "steps-celebrate-overlay"];
+  const ALL_OVERLAYS = ["add-overlay", "log-overlay", "gift-overlay", "manage-overlay", "edit-chore-overlay", "cafe-overlay", "leaderboard-overlay", "spend-overlay", "new-spend-overlay", "confirm-spend-overlay", "celebrate-overlay", "overdue-overlay", "solo-team-overlay", "steps-overlay", "steps-celebrate-overlay"];
 
   const CATEGORY_EMOJI = { cat: "🐱", furniture: "🪑", toy: "🧸", background: "🖼️", cafe_open: "☕" };
 
@@ -1865,46 +1854,83 @@
   $("pick-solo").addEventListener("click", function () { resolveSoloTeam(false, $("pick-solo")); });
   $("pick-team").addEventListener("click", function () { resolveSoloTeam(true, $("pick-team")); });
 
-  $("open-wishlist").addEventListener("click", async function () {
-    openSheet("wishlist-overlay");
-    await loadWishlist();
+  $("open-spend").addEventListener("click", async function () {
+    openSheet("spend-overlay");
+    await loadSpendHistory();
   });
 
-  $("close-wishlist").addEventListener("click", function () { closeSheet("wishlist-overlay"); });
+  $("close-spend").addEventListener("click", function () { closeSheet("spend-overlay"); });
 
-  $("open-new-wishlist-item").addEventListener("click", function () {
-    $("new-wishlist-form").reset();
-    $("new-wishlist-error").classList.add("hidden");
-    openSheet("new-wishlist-overlay");
-    $("w-name").focus();
+  $("open-new-spend").addEventListener("click", function () {
+    $("new-spend-form").reset();
+    $("new-spend-error").classList.add("hidden");
+    openSheet("new-spend-overlay");
+    $("sp-item").focus();
   });
 
-  $("cancel-new-wishlist").addEventListener("click", function () { closeSheet("new-wishlist-overlay"); });
+  $("cancel-new-spend").addEventListener("click", function () { closeSheet("new-spend-overlay"); });
 
-  $("new-wishlist-form").addEventListener("submit", async function (event) {
-    event.preventDefault();
-    $("new-wishlist-error").classList.add("hidden");
-    $("new-wishlist-submit").disabled = true;
-    $("new-wishlist-submit").textContent = "Adding…";
-
-    const { error } = await db.rpc("create_wishlist_item", {
-      p_name: $("w-name").value,
-      p_cost: Number($("w-cost").value)
+  document.querySelectorAll(".quick-amounts [data-amount]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      $("sp-amount").value = btn.dataset.amount;
     });
+  });
 
-    $("new-wishlist-submit").disabled = false;
-    $("new-wishlist-submit").textContent = "Add to wishlist";
+  $("new-spend-form").addEventListener("submit", function (event) {
+    event.preventDefault();
+    $("new-spend-error").classList.add("hidden");
 
-    if (error) {
-      $("new-wishlist-error").textContent = error.message || "Couldn't add that.";
-      $("new-wishlist-error").classList.remove("hidden");
+    const item = $("sp-item").value.trim();
+    const amount = parseInt($("sp-amount").value, 10);
+
+    if (!item) {
+      $("new-spend-error").textContent = "Say what you're spending on.";
+      $("new-spend-error").classList.remove("hidden");
+      return;
+    }
+    if (!amount || amount <= 0) {
+      $("new-spend-error").textContent = "Amount must be a positive number of coins.";
+      $("new-spend-error").classList.remove("hidden");
       return;
     }
 
-    $("new-wishlist-form").reset();
-    closeSheet("new-wishlist-overlay");
-    toast("Added to your wishlist.");
-    await loadWishlist();
+    pendingSpend = { item: item, amount: amount };
+    $("confirm-spend-error").classList.add("hidden");
+    $("confirm-spend-message").textContent =
+      "Spend " + amount + " coins on \"" + item + "\"?";
+    closeSheet("new-spend-overlay");
+    openSheet("confirm-spend-overlay");
+  });
+
+  $("cancel-confirm-spend").addEventListener("click", function () {
+    pendingSpend = null;
+    closeSheet("confirm-spend-overlay");
+  });
+
+  $("confirm-spend-submit").addEventListener("click", async function () {
+    if (!pendingSpend) return;
+    const btn = $("confirm-spend-submit");
+    $("confirm-spend-error").classList.add("hidden");
+    btn.disabled = true;
+
+    const { error } = await db.rpc("spend_coins", {
+      p_reason: pendingSpend.item,
+      p_amount: pendingSpend.amount
+    });
+
+    btn.disabled = false;
+
+    if (error) {
+      $("confirm-spend-error").textContent = error.message || "Couldn't log that.";
+      $("confirm-spend-error").classList.remove("hidden");
+      return;
+    }
+
+    pendingSpend = null;
+    closeSheet("confirm-spend-overlay");
+    toast("Logged.");
+    await loadSpendHistory();
+    await refresh();
   });
 
   $("open-manage").addEventListener("click", async function () {
@@ -2267,7 +2293,7 @@
 
       const amount = document.createElement("span");
       amount.className = "amount";
-      amount.textContent = "+" + row.amount;
+      amount.textContent = (row.amount >= 0 ? "+" : "") + row.amount;
       right.appendChild(amount);
 
       entry.appendChild(left);
